@@ -122,7 +122,7 @@ function switchTab(id, el) {
 
 async function loadInbound() {
   try {
-    const res = await fetch('/api/inbound');
+    const res = await fetch('http://192.168.0.154:8000/api/inbound');
     const d = await res.json();
     const iv = d.inbound || {};
     const pu = d.putaway || {};
@@ -178,7 +178,7 @@ async function loadInbound() {
 
 async function loadB2C() {
   try {
-    const res = await fetch('/api/b2c');
+    const res = await fetch('http://192.168.0.154:8000/api/b2c');
     const d = await res.json();
     const s = d.summary || {};
     const floors = d.floors || [];
@@ -265,7 +265,7 @@ async function loadB2C() {
 
 async function loadB2B() {
   try {
-    const res = await fetch('/api/b2b');
+    const res = await fetch('http://192.168.0.154:8000/api/b2b');
     const d = await res.json();
     const s = d.summary || {};
     const groups = d.groups || [];
