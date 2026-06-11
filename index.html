@@ -6,68 +6,75 @@
 <title>물류센터 현황판</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'맑은 고딕',sans-serif;background:#f8f9fa;min-height:100vh}
-.header{background:#111827;padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
-.header-left{display:flex;align-items:center;gap:14px}
+body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
+
+/* 헤더 */
+.header{background:#111827;padding:10px 24px;display:flex;justify-content:space-between;align-items:center}
+.header-left{display:flex;align-items:center;gap:12px}
 .center-badge{background:#1d4ed8;color:#bfdbfe;font-size:12px;font-weight:700;padding:4px 12px;border-radius:6px}
-.header-title{font-size:16px;font-weight:700;color:#f9fafb}
-.header-right{display:flex;align-items:center;gap:16px}
+.header-title{font-size:15px;font-weight:700;color:#f9fafb}
+.header-right{display:flex;align-items:center;gap:12px}
 .header-time{font-size:13px;color:#9ca3af}
 .refresh-badge{font-size:11px;color:#6b7280;background:#1f2937;padding:3px 10px;border-radius:4px}
-.tabs{display:flex;background:#fff;border-bottom:1px solid #e5e7eb}
-.tab{padding:12px 24px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#6b7280;font-weight:700}
-.tab.active{color:#1d4ed8;border-bottom-color:#1d4ed8}
-.content{padding:20px}
-.section-title{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
 
-.kpi-row{display:grid;gap:12px;margin-bottom:18px}
-.kpi-4{grid-template-columns:repeat(4,1fr)}
-.kpi-3{grid-template-columns:repeat(3,1fr)}
-.kpi{background:#fff;border-radius:8px;padding:16px 18px;border:0.5px solid #e5e7eb}
-.kpi-label{font-size:12px;color:#111827;margin-bottom:6px;font-weight:700}
-.kpi-value{font-size:26px;font-weight:700;line-height:1.1}
-.kpi-sub{font-size:11px;color:#9ca3af;margin-top:5px}
-.v-blue{color:#1d4ed8}.v-green{color:#059669}.v-red{color:#dc2626}
-.v-amber{color:#d97706}.v-purple{color:#7c3aed}.v-gray{color:#374151}
+.content{padding:14px;display:flex;flex-direction:column;gap:12px}
 
-.pbar-wrap{background:#f3f4f6;border-radius:4px;height:6px;margin-top:8px;overflow:hidden}
-.pbar-fill{height:100%;border-radius:4px;transition:width .6s ease}
+/* ── 섹션1: 예측/목표 ── */
+.section-forecast{background:#111827;border-radius:10px;padding:16px 22px;display:flex;align-items:center;gap:0}
+.fc-main{flex:0 0 auto;margin-right:32px}
+.fc-label{font-size:15px;color:#fff;font-weight:700;margin-bottom:6px}
+.fc-value{font-size:48px;font-weight:700;color:#fff;line-height:1}
+.fc-sub{font-size:14px;color:#fff;margin-top:5px;font-weight:700}
+.fc-divider{width:1px;background:#374151;height:70px;margin-right:32px;flex-shrink:0}
+.fc-progress{flex:1}
+.fc-progress-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.fc-current-label{font-size:15px;color:#fff;font-weight:700}
+.fc-current-value{font-size:36px;font-weight:700;color:#60a5fa}
+.fc-pct{font-size:28px;font-weight:700;color:#34d399}
+.fc-bar-wrap{background:#1f2937;border-radius:6px;height:16px;overflow:hidden;margin-bottom:8px}
+.fc-bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#1d4ed8,#3b82f6);transition:width .8s ease}
+.fc-bar-bottom{display:flex;justify-content:space-between}
+.fc-remain{font-size:14px;color:#fff;font-weight:700}
+.fc-stats{display:flex;gap:24px;margin-left:32px;flex-shrink:0}
+.fc-stat{text-align:center}
+.fc-stat-label{font-size:13px;color:#9ca3af;font-weight:700;margin-bottom:4px}
+.fc-stat-value{font-size:20px;font-weight:700;color:#fff}
 
-.step-flow{display:flex;align-items:stretch;margin-bottom:18px;background:#fff;border-radius:8px;border:0.5px solid #e5e7eb;overflow:hidden}
-.step-box{flex:1;padding:14px 10px;text-align:center;border-right:0.5px solid #e5e7eb}
-.step-box:last-child{border-right:none}
-.step-label{font-size:11px;color:#374151;margin-bottom:6px;font-weight:700}
-.step-value{font-size:24px;font-weight:700}
-.step-pct{font-size:11px;color:#9ca3af;margin-top:3px}
+/* ── 섹션2: 진행현황 ── */
+.section-progress{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.prog-card{background:#fff;border-radius:8px;padding:12px 14px;border:0.5px solid #e5e7eb}
+.prog-card.highlight-blue{border:1.5px solid #bfdbfe;background:#eff6ff}
+.prog-card.highlight-red{border:1.5px solid #fecaca;background:#fff7f7}
+.prog-label{font-size:13px;font-weight:700;color:#111827;margin-bottom:6px}
+.prog-label.red{color:#dc2626}
+.prog-label.blue{color:#1d4ed8}
+.prog-value{font-size:26px;font-weight:700;color:#111827;line-height:1.1}
+.prog-value.blue{color:#1d4ed8}
+.prog-value.red{color:#dc2626}
+.prog-value.amber{color:#d97706}
+.prog-value.green{color:#059669}
+.prog-pct{font-size:13px;font-weight:700;color:#111827;margin-top:4px}
+.pbar-wrap{background:#f3f4f6;border-radius:4px;height:5px;margin-top:6px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:4px}
 
-.card-table{background:#fff;border-radius:8px;border:0.5px solid #e5e7eb;overflow:hidden;margin-bottom:16px}
-.tbl-head{display:grid;padding:9px 16px;background:#f9fafb;font-size:11px;color:#374151;font-weight:700;border-bottom:0.5px solid #e5e7eb}
-.tbl-row{display:grid;padding:10px 16px;border-top:0.5px solid #f3f4f6;align-items:center;font-size:13px}
-.tbl-row:hover{background:#f9fafb}
-
-.tag{display:inline-block;font-size:10px;padding:2px 8px;border-radius:3px;font-weight:700}
-.tag-ok{background:#d1fae5;color:#065f46}
-.tag-warn{background:#fef3c7;color:#92400e}
-.tag-err{background:#fee2e2;color:#991b1b}
-
-.issue-title{font-size:12px;font-weight:700;color:#dc2626;margin:16px 0 8px;display:flex;align-items:center;gap:6px}
-.issue-dot{width:7px;height:7px;border-radius:50%;background:#dc2626;display:inline-block}
-
-.floor-group{margin-bottom:14px}
-.floor-group-label{font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;padding:6px 14px;border-radius:8px 8px 0 0;border:0.5px solid #e5e7eb;border-bottom:none}
-.floor-rows{background:#fff;border-radius:0 0 8px 8px;border:0.5px solid #e5e7eb}
-.floor-row{display:grid;grid-template-columns:52px repeat(3,1fr);padding:11px 16px;border-top:0.5px solid #f3f4f6;align-items:center}
-.floor-row:hover{background:#f9fafb}
-.floor-label{font-size:16px;font-weight:700;color:#111827}
+/* ── 섹션3: 구역별 ── */
+.section-floors{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.floor-group{background:#fff;border-radius:10px;overflow:hidden;border:0.5px solid #e5e7eb}
+.floor-group-header{background:#111827;padding:8px 16px;font-size:13px;font-weight:700;color:#f9fafb}
+.floor-table-head{display:grid;grid-template-columns:44px repeat(3,1fr);padding:8px 16px;background:#f9fafb;border-bottom:0.5px solid #e5e7eb}
+.floor-th{text-align:right;font-size:14px;font-weight:700;color:#111827}
+.floor-row{display:grid;grid-template-columns:44px repeat(3,1fr);padding:12px 16px;border-top:0.5px solid #f3f4f6;align-items:start}
+.floor-row:hover{background:#fafafa}
+.floor-name{font-size:18px;font-weight:700;color:#111827;padding-top:4px}
 .floor-cell{text-align:right}
-.floor-num{font-size:17px;font-weight:700}
-.floor-sub{font-size:10px;color:#9ca3af;margin-top:2px}
-
-.tab-content{display:none}
-.tab-content.active{display:block}
+.floor-unfinished{font-size:16px;font-weight:700;margin-bottom:3px}
+.floor-done{font-size:16px;font-weight:700;color:#111827}
+.floor-pct{font-size:20px;font-weight:700;color:#111827;margin:2px 0}
+.floor-bar-wrap{background:#f3f4f6;border-radius:3px;height:5px;overflow:hidden;margin-top:3px}
+.floor-bar-fill{height:100%;border-radius:3px}
 
 .loading{text-align:center;padding:60px;color:#9ca3af;font-size:14px}
-.error-msg{background:#fee2e2;color:#991b1b;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;font-weight:700}
+.error-msg{background:#fee2e2;color:#991b1b;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:700}
 </style>
 </head>
 <body>
@@ -75,7 +82,7 @@ body{font-family:'맑은 고딕',sans-serif;background:#f8f9fa;min-height:100vh}
 <div class="header">
   <div class="header-left">
     <span class="center-badge">신여주1센터</span>
-    <span class="header-title">물류센터 현황판</span>
+    <span class="header-title">B2C 출고 현황판</span>
   </div>
   <div class="header-right">
     <span class="refresh-badge" id="next-refresh">다음 갱신: 10분 후</span>
@@ -83,96 +90,70 @@ body{font-family:'맑은 고딕',sans-serif;background:#f8f9fa;min-height:100vh}
   </div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('inbound',this)">입고 / 적치 현황</div>
-  <div class="tab" onclick="switchTab('b2c',this)">B2C 출고 현황</div>
-  <div class="tab" onclick="switchTab('b2b',this)">B2B 매장출고 현황</div>
-</div>
-
 <div class="content">
+  <!-- 섹션1: 예측/목표 -->
+  <div class="section-forecast" id="forecast-section">
+    <div class="fc-main">
+      <div class="fc-label">오늘 예측치</div>
+      <div class="fc-value" id="fc-value">-</div>
+      <div class="fc-sub">M1P 기준</div>
+    </div>
+    <div class="fc-divider"></div>
+    <div class="fc-progress">
+      <div class="fc-progress-top">
+        <span class="fc-current-label">현재 주문수량</span>
+        <span class="fc-pct" id="fc-pct">- %</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:8px">
+        <span class="fc-current-value" id="fc-current">-</span>
+        <span style="font-size:16px;color:#fff;font-weight:700">PCS</span>
+      </div>
+      <div class="fc-bar-wrap">
+        <div class="fc-bar-fill" id="fc-bar" style="width:0%"></div>
+      </div>
+      <div class="fc-bar-bottom">
+        <span class="fc-remain" id="fc-remain">잔여: -</span>
+        <span style="font-size:14px;color:#fff;font-weight:700" id="fc-updated"></span>
+      </div>
+    </div>
 
-  <!-- 입고/적치 -->
-  <div class="tab-content active" id="tab-inbound">
-    <div id="inbound-content"><div class="loading">데이터 불러오는 중...</div></div>
   </div>
 
-  <!-- B2C -->
-  <div class="tab-content" id="tab-b2c">
-    <div id="b2c-content"><div class="loading">데이터 불러오는 중...</div></div>
+  <!-- 섹션2: 진행현황 -->
+  <div class="section-progress" id="progress-section">
+    <div class="loading">데이터 불러오는 중...</div>
   </div>
 
-  <!-- B2B -->
-  <div class="tab-content" id="tab-b2b">
-    <div id="b2b-content"><div class="loading">데이터 불러오는 중...</div></div>
+  <!-- 섹션3: 구역별 -->
+  <div class="section-floors" id="floors-section">
+    <div class="loading">데이터 불러오는 중...</div>
   </div>
-
 </div>
 
 <script>
 const fmt = n => n == null ? '-' : Number(n).toLocaleString();
 const pct = (v, t) => t > 0 ? Math.round(v / t * 100) : 0;
-const bar = (v, t, color) => `<div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(v,t)}%;background:${color}"></div></div>`;
+let lastUpdated = '-';
 
-function switchTab(id, el) {
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
-  el.classList.add('active');
-}
-
-async function loadInbound() {
+async function loadForecast() {
   try {
-    const res = await fetch('http://192.168.0.154:8000/api/inbound');
+    const res = await fetch('http://192.168.0.154:8000/api/forecast');
     const d = await res.json();
-    const iv = d.inbound || {};
-    const pu = d.putaway || {};
-    const issues = d.issues || [];
+    if (d.status !== 'ok') return;
+    const f = d.forecast || {};
+    const totalQty = Number(d.total_qty || 0);
+    const fcst = Number(f.fcst_total || 0);
+    const p = pct(totalQty, fcst);
 
-    const plannedQty = Number(iv.planned_qty || 0);
-    const fixedQty = Number(iv.fixed_qty || 0);
-    const remainQty = Number(iv.remaining_qty || 0);
-    const recvQty = Number(pu.recv_qty || 0);
-    const putawayQty = Number(pu.putaway_qty || 0);
-    const missingPutaway = recvQty - putawayQty;
-    const putawayRate = pct(putawayQty, recvQty);
-    const inboundRate = pct(fixedQty, plannedQty);
-
-    const issueRows = issues.map(r => `
-      <div class="tbl-row" style="grid-template-columns:160px 1fr 90px 90px 90px 70px">
-        <span style="color:#6b7280;font-size:11px">${r.inbound_plan_number || ''}</span>
-        <span>${r.shipper_name || ''}</span>
-        <span style="text-align:right">${fmt(r.planned_qty)}</span>
-        <span style="text-align:right">${fmt(r.fixed_qty)}</span>
-        <span style="text-align:right;color:${r.issue_type==='미시작'?'#dc2626':'#d97706'};font-weight:700">${fmt(r.remaining_qty)}</span>
-        <span style="text-align:right"><span class="tag ${r.issue_type==='미시작'?'tag-err':'tag-warn'}">${r.issue_type}</span></span>
-      </div>
-    `).join('');
-
-    document.getElementById('inbound-content').innerHTML = `
-      <div class="section-title">입고</div>
-      <div class="kpi-row kpi-4">
-        <div class="kpi"><div class="kpi-label">ASN 예정수량</div><div class="kpi-value v-gray">${fmt(plannedQty)}</div><div class="kpi-sub">등록 ASN ${fmt(iv.asn_count)}건</div></div>
-        <div class="kpi"><div class="kpi-label">입고 확정</div><div class="kpi-value v-blue">${fmt(fixedQty)}</div>${bar(fixedQty,plannedQty,'#1d4ed8')}<div class="kpi-sub">${inboundRate}%</div></div>
-        <div class="kpi"><div class="kpi-label">미입고</div><div class="kpi-value v-amber">${fmt(remainQty)}</div><div class="kpi-sub">잔여 처리 필요</div></div>
-        <div class="kpi"><div class="kpi-label">입고 진행률</div><div class="kpi-value v-${inboundRate>=80?'green':inboundRate>=50?'amber':'red'}">${inboundRate}%</div><div class="kpi-sub">당일 기준</div></div>
-      </div>
-      <div class="issue-title"><span class="issue-dot"></span>이슈 ASN (미시작 · 지연)</div>
-      <div class="card-table">
-        <div class="tbl-head" style="grid-template-columns:160px 1fr 90px 90px 90px 70px">
-          <span>ASN 번호</span><span>화주</span><span style="text-align:right">예정</span><span style="text-align:right">확정</span><span style="text-align:right">미입고</span><span style="text-align:right">상태</span>
-        </div>
-        ${issueRows || '<div style="padding:16px;text-align:center;color:#9ca3af;font-size:13px">이슈 없음 ✓</div>'}
-      </div>
-      <div class="section-title">적치</div>
-      <div class="kpi-row kpi-4">
-        <div class="kpi"><div class="kpi-label">적치 예정 (RECV 대기)</div><div class="kpi-value v-gray">${fmt(recvQty)}</div><div class="kpi-sub">RECV 로케이션 재고</div></div>
-        <div class="kpi"><div class="kpi-label">적치 완료</div><div class="kpi-value v-green">${fmt(putawayQty)}</div>${bar(putawayQty,recvQty,'#059669')}<div class="kpi-sub">${putawayRate}%</div></div>
-        <div class="kpi"><div class="kpi-label">미적치</div><div class="kpi-value v-amber">${fmt(missingPutaway)}</div><div class="kpi-sub">RECV 대기 중</div></div>
-        <div class="kpi"><div class="kpi-label">적치 진행률</div><div class="kpi-value v-${putawayRate>=80?'green':putawayRate>=50?'amber':'red'}">${putawayRate}%</div><div class="kpi-sub">당일 기준</div></div>
-      </div>
-    `;
+    document.getElementById('fc-value').textContent = fmt(fcst);
+    document.getElementById('fc-current').textContent = fmt(totalQty);
+    document.getElementById('fc-pct').textContent = p + '%';
+    document.getElementById('fc-bar').style.width = Math.min(p, 100) + '%';
+    document.getElementById('fc-remain').textContent = '잔여: ' + fmt(fcst - totalQty) + ' PCS';
+    document.getElementById('fc-yoy').textContent = fmt('-');
+    document.getElementById('fc-wow').textContent = fmt('-');
   } catch(e) {
-    document.getElementById('inbound-content').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
+    console.error('forecast error', e);
   }
 }
 
@@ -180,198 +161,144 @@ async function loadB2C() {
   try {
     const res = await fetch('http://192.168.0.154:8000/api/b2c');
     const d = await res.json();
+    if (d.last_updated) lastUpdated = d.last_updated;
+    document.getElementById('fc-updated').textContent = '기준: ' + lastUpdated;
+
     const s = d.summary || {};
     const floors = d.floors || [];
-
     const totalQty = Number(s.total_qty || 0);
     const allocQty = Number(s.alloc_qty || 0);
     const pickQty  = Number(s.pick_qty  || 0);
     const packQty  = Number(s.pack_qty  || 0);
     const unalloc  = totalQty - allocQty;
-    const unpick   = totalQty - pickQty;
-    const unpack   = totalQty - packQty;
+    const unpick   = allocQty - pickQty;
+    const unpack   = allocQty - packQty;
 
-    const floorsByDong = {A: [], B: []};
+    // 섹션2: 진행현황
+    document.getElementById('progress-section').innerHTML = `
+      <div class="prog-card">
+        <div class="prog-label" style="color:#111827">총 주문수량</div>
+        <div class="prog-value" style="color:#111827">${fmt(totalQty)}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:4px">당일 무배당발 기준</div>
+      </div>
+      <div class="prog-card highlight-blue">
+        <div class="prog-label" style="color:#111827">할당완료</div>
+        <div class="prog-value" style="color:#111827">${fmt(allocQty)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(allocQty,totalQty)}%;background:#1d4ed8"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(allocQty,totalQty)}%</div>
+      </div>
+      <div class="prog-card highlight-red">
+        <div class="prog-label red">미할당</div>
+        <div class="prog-value red">${fmt(unalloc)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unalloc,totalQty)}%;background:#dc2626"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unalloc,totalQty)}%</div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-label" style="color:#111827">피킹완료</div>
+        <div class="prog-value" style="color:#111827">${fmt(pickQty)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(pickQty,allocQty)}%;background:#d97706"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(pickQty,allocQty)}%</div>
+      </div>
+      <div class="prog-card highlight-red">
+        <div class="prog-label red">미피킹</div>
+        <div class="prog-value red">${fmt(unpick)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpick,allocQty)}%;background:#dc2626"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpick,allocQty)}%</div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-label" style="color:#111827">패킹완료</div>
+        <div class="prog-value" style="color:#111827">${fmt(packQty)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(packQty,allocQty)}%;background:#059669"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(packQty,allocQty)}%</div>
+      </div>
+      <div class="prog-card highlight-red">
+        <div class="prog-label red">미패킹</div>
+        <div class="prog-value red">${fmt(unpack)}</div>
+        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpack,allocQty)}%;background:#dc2626"></div></div>
+        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpack,allocQty)}%</div>
+      </div>
+    `;
+
+    // 섹션3: 구역별
+    const floorsByDong = {A:[], B:[]};
     floors.forEach(f => {
-      if (f.floor && f.floor.startsWith('A')) floorsByDong.A.push(f);
-      else if (f.floor && f.floor.startsWith('B')) floorsByDong.B.push(f);
+      if (f.floor?.startsWith('A')) floorsByDong.A.push(f);
+      else if (f.floor?.startsWith('B')) floorsByDong.B.push(f);
     });
 
-    const renderFloor = (rows) => rows.map(r => {
-      const tot = Number(r.total_qty||0);
-      const al  = Number(r.alloc_qty||0);
-      const pi  = Number(r.pick_qty||0);
-      const pa  = Number(r.pack_qty||0);
+    const floorBar = (fillPct, color, doneVal, label) => `
+      <div style="text-align:right">
+        <span style="font-size:36px;font-weight:700;color:#111827">${doneVal}</span>
+      </div>`;
+
+    const renderRows = (rows) => rows.map(r => {
+      const tot    = Number(r.total_qty||0);
+      const al     = Number(r.alloc_qty||0);
+      const pi     = Number(r.pick_qty||0);
+      const pa     = Number(r.pack_qty||0);
+      const unpick = Number(r.unpick_qty||0);
+      const unpack = Number(r.unpack_qty||0);
+      const floorLabel = {'A1':'A동\n1층','A2':'A동\n2층','A3':'A동\n3층','B1':'B동\n1층','B2':'B동\n2층','B3':'B동\n3층'};
       return `
         <div class="floor-row">
-          <span class="floor-label">${r.floor}</span>
+          <span class="floor-name" style="font-size:20px;white-space:pre-line;line-height:1.3">${floorLabel[r.floor]||r.floor}</span>
           <div class="floor-cell">
-            <div class="floor-num v-blue">${fmt(al)}</div>
-            <div class="floor-sub">${fmt(tot-al)} 미할당</div>
-            ${bar(al,tot,'#1d4ed8')}
+            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(al)}</div>
+            <div style="text-align:right;font-size:42px;font-weight:700;color:${(tot-al)>0?'#dc2626':'#d1d5db'}">${fmt(tot-al)} 미할당</div>
           </div>
           <div class="floor-cell">
-            <div class="floor-num v-amber">${fmt(pi)}</div>
-            <div class="floor-sub">${fmt(tot-pi)} 미피킹</div>
-            ${bar(pi,tot,'#d97706')}
+            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pi)}</div>
+            <div style="text-align:right;font-size:42px;font-weight:700;color:${unpick>0?'#dc2626':'#d1d5db'}">${fmt(unpick)} 미피킹</div>
           </div>
           <div class="floor-cell">
-            <div class="floor-num v-green">${fmt(pa)}</div>
-            <div class="floor-sub">${fmt(tot-pa)} 미패킹</div>
-            ${bar(pa,tot,'#059669')}
+            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pa)}</div>
+            <div style="text-align:right;font-size:42px;font-weight:700;color:${unpack>0?'#dc2626':'#d1d5db'}">${fmt(unpack)} 미패킹</div>
           </div>
-        </div>
-      `;
+        </div>`;
     }).join('');
 
-    const floorHeader = `
-      <div class="tbl-head" style="grid-template-columns:52px repeat(3,1fr);border-radius:0;background:#fafafa">
+    const tableHead = `
+      <div class="floor-table-head">
         <span></span>
-        <span style="text-align:right;color:#1d4ed8;font-weight:700">할당완료<br><span style="font-size:10px;color:#9ca3af">미할당</span></span>
-        <span style="text-align:right;color:#d97706;font-weight:700">피킹완료<br><span style="font-size:10px;color:#9ca3af">미피킹</span></span>
-        <span style="text-align:right;color:#059669;font-weight:700">패킹완료<br><span style="font-size:10px;color:#9ca3af">미패킹</span></span>
-      </div>
-    `;
+        <span class="floor-th" style="font-size:28px">할당</span>
+        <span class="floor-th" style="font-size:28px">피킹</span>
+        <span class="floor-th" style="font-size:28px">패킹</span>
+      </div>`;
 
-    document.getElementById('b2c-content').innerHTML = `
-      <div class="section-title">전체 진행 현황</div>
-      <div class="kpi-row kpi-3" style="margin-bottom:12px">
-        <div class="kpi"><div class="kpi-label">총 주문수량</div><div class="kpi-value v-gray">${fmt(totalQty)} <span style="font-size:14px;color:#9ca3af">PCS</span></div><div class="kpi-sub">당일 등록 기준</div></div>
-        <div class="kpi" style="border:1.5px solid #bfdbfe;background:#eff6ff"><div class="kpi-label" style="color:#1d4ed8">할당 완료</div><div class="kpi-value v-blue">${fmt(allocQty)}</div>${bar(allocQty,totalQty,'#1d4ed8')}<div class="kpi-sub">${pct(allocQty,totalQty)}% · 미할당 ${fmt(unalloc)}</div></div>
-        <div class="kpi"><div class="kpi-label">미처리 잔량</div><div class="kpi-value v-red">${fmt(unpack)}</div><div class="kpi-sub">패킹 미완료 기준</div></div>
+    document.getElementById('floors-section').innerHTML = `
+      <div class="floor-group">
+        <div class="floor-group-header">A동</div>
+        ${tableHead}${renderRows(floorsByDong.A)}
       </div>
-      <div class="step-flow">
-        <div class="step-box"><div class="step-label">피킹 완료</div><div class="step-value v-amber">${fmt(pickQty)}</div><div class="step-pct">${pct(pickQty,totalQty)}%</div></div>
-        <div class="step-box"><div class="step-label">미피킹</div><div class="step-value v-red">${fmt(unpick)}</div><div class="step-pct">${pct(unpick,totalQty)}%</div></div>
-        <div class="step-box"><div class="step-label">패킹 완료</div><div class="step-value v-green">${fmt(packQty)}</div><div class="step-pct">${pct(packQty,totalQty)}%</div></div>
-        <div class="step-box"><div class="step-label">미패킹</div><div class="step-value v-red">${fmt(unpack)}</div><div class="step-pct">${pct(unpack,totalQty)}%</div></div>
-      </div>
-      <div class="section-title">구역별 현황</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="floor-group">
-          <div class="floor-group-label">A동</div>
-          <div class="floor-rows">${floorHeader}${renderFloor(floorsByDong.A)}</div>
-        </div>
-        <div class="floor-group">
-          <div class="floor-group-label">B동</div>
-          <div class="floor-rows">${floorHeader}${renderFloor(floorsByDong.B)}</div>
-        </div>
-      </div>
-    `;
+      <div class="floor-group">
+        <div class="floor-group-header">B동</div>
+        ${tableHead}${renderRows(floorsByDong.B)}
+      </div>`;
   } catch(e) {
-    document.getElementById('b2c-content').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
+    document.getElementById('progress-section').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
   }
 }
 
-async function loadB2B() {
-  try {
-    const res = await fetch('http://192.168.0.154:8000/api/b2b');
-    const d = await res.json();
-    const s = d.summary || {};
-    const groups = d.groups || [];
-
-    const totalQty = Number(s.total_qty || 0);
-    const pickQty  = Number(s.pick_qty  || 0);
-    const packQty  = Number(s.pack_qty  || 0);
-    const shipQty  = Number(s.ship_qty  || 0);
-
-    const groupRows = groups.map(r => {
-      const tot = Number(r.total_qty||0);
-      const pi  = Number(r.pick_qty||0);
-      const pa  = Number(r.pack_qty||0);
-      const sh  = Number(r.ship_qty||0);
-      const shipPct = pct(sh, tot);
-      const status = shipPct >= 80 ? 'ok' : pa/tot >= 0.5 ? 'warn' : 'err';
-      const label  = {ok:'출하중', warn:'패킹중', err:'지연'}[status];
-      return `
-        <div class="tbl-row" style="grid-template-columns:1fr 80px 90px 90px 80px 60px">
-          <span style="color:#111827">${r.group_name||''}</span>
-          <span style="text-align:right;color:#374151">${fmt(tot)}</span>
-          <span style="text-align:right"><span style="color:#d97706;font-weight:700">${fmt(pi)}</span><span style="display:block;font-size:10px;color:#9ca3af">${pct(pi,tot)}%</span></span>
-          <span style="text-align:right"><span style="color:#059669;font-weight:700">${fmt(pa)}</span><span style="display:block;font-size:10px;color:#9ca3af">${pct(pa,tot)}%</span></span>
-          <span style="text-align:right"><span style="color:#7c3aed;font-weight:700">${fmt(sh)}</span><span style="display:block;font-size:10px;color:#9ca3af">${pct(sh,tot)}%</span></span>
-          <span style="text-align:right"><span class="tag tag-${status}">${label}</span></span>
-        </div>
-      `;
-    }).join('');
-
-    const delayGroups = groups.filter(r => {
-      const tot = Number(r.total_qty||0);
-      const pa  = Number(r.pack_qty||0);
-      return pct(pa, tot) < 50;
-    });
-    const delayRows = delayGroups.map(r => `
-      <div class="tbl-row" style="grid-template-columns:1fr 100px 60px">
-        <span>${r.group_name||''}</span>
-        <span style="text-align:right;color:#dc2626;font-weight:700">${fmt(Number(r.total_qty||0)-Number(r.pack_qty||0))}</span>
-        <span style="text-align:right"><span class="tag tag-err">지연</span></span>
-      </div>
-    `).join('');
-
-    document.getElementById('b2b-content').innerHTML = `
-      <div class="section-title">전체 진행 현황</div>
-      <div class="kpi-row kpi-4">
-        <div class="kpi"><div class="kpi-label">출고요청 총량</div><div class="kpi-value v-gray">${fmt(totalQty)} <span style="font-size:13px;color:#9ca3af">PCS</span></div><div class="kpi-sub">등록 ${fmt(s.store_count)}개 매장</div></div>
-        <div class="kpi"><div class="kpi-label">피킹 완료</div><div class="kpi-value v-amber">${fmt(pickQty)}</div>${bar(pickQty,totalQty,'#d97706')}<div class="kpi-sub">${pct(pickQty,totalQty)}%</div></div>
-        <div class="kpi"><div class="kpi-label">패킹 완료</div><div class="kpi-value v-green">${fmt(packQty)}</div>${bar(packQty,totalQty,'#059669')}<div class="kpi-sub">${pct(packQty,totalQty)}%</div></div>
-        <div class="kpi"><div class="kpi-label">출하 완료</div><div class="kpi-value v-purple">${fmt(shipQty)}</div>${bar(shipQty,totalQty,'#7c3aed')}<div class="kpi-sub">${pct(shipQty,totalQty)}%</div></div>
-      </div>
-      <div class="section-title">그룹별 현황</div>
-      <div class="card-table">
-        <div class="tbl-head" style="grid-template-columns:1fr 80px 90px 90px 80px 60px">
-          <span>그룹</span><span style="text-align:right">요청</span>
-          <span style="text-align:right;color:#d97706">피킹완료</span>
-          <span style="text-align:right;color:#059669">패킹완료</span>
-          <span style="text-align:right;color:#7c3aed">출하완료</span>
-          <span style="text-align:right">상태</span>
-        </div>
-        ${groupRows || '<div style="padding:16px;text-align:center;color:#9ca3af;font-size:13px">데이터 없음</div>'}
-      </div>
-      ${delayRows ? `
-        <div class="issue-title"><span class="issue-dot"></span>지연 그룹</div>
-        <div class="card-table">
-          <div class="tbl-head" style="grid-template-columns:1fr 100px 60px">
-            <span>그룹</span><span style="text-align:right">미패킹 잔량</span><span style="text-align:right">상태</span>
-          </div>
-          ${delayRows}
-        </div>` : ''}
-    `;
-  } catch(e) {
-    document.getElementById('b2b-content').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
-  }
-}
-
-// 시계
 function tick() {
   const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
+  const pad = n => String(n).padStart(2,'0');
   document.getElementById('clock').textContent =
     `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}  ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-// 10분 자동 갱신
 let nextRefreshSec = 600;
 function refreshCountdown() {
   nextRefreshSec--;
-  if (nextRefreshSec <= 0) {
-    nextRefreshSec = 600;
-    loadAll();
-  }
-  const m = Math.floor(nextRefreshSec / 60);
-  const s = nextRefreshSec % 60;
-  document.getElementById('next-refresh').textContent =
-    `다음 갱신: ${m}분 ${String(s).padStart(2,'0')}초 후`;
+  if (nextRefreshSec <= 0) { nextRefreshSec = 600; loadAll(); }
+  const m = Math.floor(nextRefreshSec/60);
+  const s = nextRefreshSec%60;
+  document.getElementById('next-refresh').textContent = `다음 갱신: ${m}분 ${String(s).padStart(2,'0')}초 후`;
 }
 
-function loadAll() {
-  loadInbound();
-  loadB2C();
-  loadB2B();
-}
-
+function loadAll() { loadForecast(); loadB2C(); }
 loadAll();
-tick(); setInterval(tick, 1000);
-setInterval(refreshCountdown, 1000);
+tick(); setInterval(tick,1000);
+setInterval(refreshCountdown,1000);
 </script>
 </body>
 </html>

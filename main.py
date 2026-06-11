@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-import databricks.sql, os
+import databricks.sql, os, threading, time, logging
 from dotenv import load_dotenv
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 app.add_middleware(
@@ -13,6 +15,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+cache = {"b2c": None, "forecast": None, "last_updated": None, "is_loading": False}
+REFRESH_INTERVAL = 600
 
 def query(sql):
     with databricks.sql.connect(
@@ -25,149 +30,143 @@ def query(sql):
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
 
-@app.get("/api/inbound")
-def get_inbound():
-    rows = query("""
-        SELECT
-            COUNT(DISTINCT ip.id)                                         AS asn_count,
-            SUM(ip.total_quantity)                                        AS planned_qty,
-            SUM(CASE WHEN f.id IS NOT NULL THEN f.fixed_quantity ELSE 0 END) AS fixed_qty,
-            SUM(ip.total_quantity)
-              - SUM(CASE WHEN f.id IS NOT NULL THEN f.fixed_quantity ELSE 0 END) AS remaining_qty
-        FROM pbo.logistics.inbound_plan ip
-        LEFT JOIN pbo.logistics.inbound_fixed f
-            ON f.inbound_plan_id = ip.id
-            AND DATE(f.inbound_fixed_at) = CURRENT_DATE
-        WHERE DATE(ip.expected_date) = CURRENT_DATE
-          AND ip.mst_warehouse_id = 1
-    """)
-    inbound = rows[0] if rows else {}
+B2C_WHERE = """
+    SUBSTRING(o.cut_off_no, 1, 10)
+        BETWEEN CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE, 1), 'yyyyMMdd'), '23')
+            AND CONCAT(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd'), '22')
+    AND o.mst_warehouse_id = 1
+    AND o.order_type NOT IN ('IN_HOUSE','ETC')
+    AND o.delivery_type != 'LOADED_FREIGHT'
+    AND o.outbound_status != 'CANCEL'
+    AND CONCAT(o.assign_status, o.picking_status, o.packing_status, o.outbound_status)
+        != 'NOTHINGREADYNOTHINGCREATED_WAVE'
+    AND s.shipper_name != 'MUSINSA_USED'
+"""
 
-    putaway = query("""
-        SELECT
-            SUM(CASE WHEN l.code LIKE 'RECV%' THEN i.total_qty ELSE 0 END) AS recv_qty,
-            SUM(CASE WHEN h.inventory_history_type = 'PUTAWAY'
-                      AND DATE(h.tx_date) = CURRENT_DATE THEN h.quantity ELSE 0 END) AS putaway_qty
-        FROM pbo.logistics.inventory i
-        JOIN pbo.logistics.mst_location l ON l.id = i.mst_location_id
-        LEFT JOIN pbo.logistics.inventory_history h ON h.mst_lot_id = i.mst_lot_id
-        WHERE i.mst_warehouse_id = 1
-    """)
-    putaway_data = putaway[0] if putaway else {}
+AREA_JOIN = """
+    JOIN pbo.logistics.mst_location l ON l.id = oa.mst_location_id
+    JOIN pbo.logistics.mst_zone z ON z.id = l.mst_zone_id
+    JOIN pbo.logistics.mst_area a ON a.id = z.mst_area_id
+"""
 
-    issues = query("""
+AREA_WHERE = """
+    AND a.code IN ('A1','A2','A3','B1','B2','B3')
+    AND a.mst_warehouse_id = 1
+"""
+
+def fetch_b2c():
+    # 총 주문수량
+    total = query(f"""
+        SELECT SUM(o.total_planned_quantity) AS total_qty
+        FROM `pbo-rt`.logistics.outbound o
+        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
+        WHERE {B2C_WHERE}
+    """)
+    total_qty = total[0]["total_qty"] if total else 0
+
+    # 할당/피킹/패킹
+    summary = query(f"""
         SELECT
-            ip.inbound_plan_number,
-            s.shipper_name,
-            ip.total_quantity                                              AS planned_qty,
-            COALESCE(SUM(f.fixed_quantity), 0)                            AS fixed_qty,
-            ip.total_quantity - COALESCE(SUM(f.fixed_quantity), 0)        AS remaining_qty,
-            CASE WHEN COALESCE(SUM(f.fixed_quantity), 0) = 0 THEN '미시작'
-                 ELSE '지연' END                                           AS issue_type
-        FROM pbo.logistics.inbound_plan ip
-        JOIN pbo.logistics.mst_shipper s ON s.id = ip.mst_shipper_id
-        LEFT JOIN pbo.logistics.inbound_fixed f
-            ON f.inbound_plan_id = ip.id
-            AND DATE(f.inbound_fixed_at) = CURRENT_DATE
-        WHERE DATE(ip.expected_date) = CURRENT_DATE
-          AND ip.mst_warehouse_id = 1
-        GROUP BY ip.id, ip.inbound_plan_number, s.shipper_name, ip.total_quantity
-        HAVING ip.total_quantity - COALESCE(SUM(f.fixed_quantity), 0) > 0
-        ORDER BY remaining_qty DESC
-        LIMIT 10
+            SUM(oa.quantity) AS alloc_qty,
+            SUM(CASE WHEN oi.picking_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,
+            SUM(CASE WHEN oi.packing_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty
+        FROM `pbo-rt`.logistics.outbound_assign oa
+        JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id
+        JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id
+        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
+        {AREA_JOIN}
+        WHERE {B2C_WHERE}
+          {AREA_WHERE}
     """)
 
-    return {
-        "status": "ok",
-        "inbound": inbound,
-        "putaway": putaway_data,
-        "issues": issues
-    }
+    result = summary[0] if summary else {}
+    result["total_qty"] = total_qty
+
+    # 구역별
+    floors = query(f"""
+        SELECT
+            a.code AS floor,
+            SUM(oa.quantity) AS total_qty,
+            SUM(oa.quantity) AS alloc_qty,
+            SUM(CASE WHEN oi.picking_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,
+            SUM(CASE WHEN oi.picking_status != 'COMPLETE' THEN oa.quantity ELSE 0 END) AS unpick_qty,
+            SUM(CASE WHEN oi.packing_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty,
+            SUM(CASE WHEN oi.packing_status != 'COMPLETE' THEN oa.quantity ELSE 0 END) AS unpack_qty
+        FROM `pbo-rt`.logistics.outbound_assign oa
+        JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id
+        JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id
+        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
+        {AREA_JOIN}
+        WHERE {B2C_WHERE}
+          {AREA_WHERE}
+        GROUP BY a.code
+        ORDER BY a.code
+    """)
+
+    return {"status": "ok", "summary": result, "floors": floors}
+
+def fetch_forecast():
+    forecast = query("""
+        SELECT
+            SUM(fcst) AS fcst_total,
+            SUM(CASE WHEN ord_type = 'MUSINSA' THEN fcst ELSE 0 END) AS fcst_musinsa,
+            SUM(CASE WHEN ord_type = 'MFS' THEN fcst ELSE 0 END) AS fcst_mfs
+        FROM TEAM.logistics.raw_logistics_snop_fc_forecast_daily
+        WHERE dt = CURRENT_DATE
+          AND wh_nm = '신여주1'
+          AND fcst > 0
+    """)
+    return {"status": "ok", "forecast": forecast[0] if forecast else {}}
+
+def refresh_cache():
+    while True:
+        try:
+            logger.info("캐시 갱신 시작...")
+            cache["is_loading"] = True
+            cache["b2c"] = fetch_b2c()
+            cache["forecast"] = fetch_forecast()
+            cache["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            cache["is_loading"] = False
+            logger.info(f"캐시 갱신 완료: {cache['last_updated']}")
+        except Exception as e:
+            cache["is_loading"] = False
+            logger.error(f"캐시 갱신 실패: {e}")
+        time.sleep(REFRESH_INTERVAL)
+
+@app.on_event("startup")
+def startup_event():
+    thread = threading.Thread(target=refresh_cache, daemon=True)
+    thread.start()
+    logger.info("백그라운드 캐시 갱신 스레드 시작")
 
 @app.get("/api/b2c")
 def get_b2c():
-    summary = query("""
-        SELECT
-            SUM(o.total_planned_quantity)                                              AS total_qty,
-            SUM(CASE WHEN o.assign_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS alloc_qty,
-            SUM(CASE WHEN o.picking_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN o.packing_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pack_qty
-        FROM pbo.logistics.outbound o
-        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
-        WHERE DATE(o.ordered_date) = CURRENT_DATE
-          AND o.mst_warehouse_id = 1
-          AND o.order_type NOT IN ('IN_HOUSE','ETC')
-          AND o.mst_warehouse_id != 2
-          AND o.delivery_type != 'LOADED_FREIGHT'
-          AND o.outbound_status != 'CANCEL'
-          AND CONCAT(o.assign_status, o.picking_status, o.packing_status, o.outbound_status)
-              != 'NOTHINGREADYNOTHINGCREATED_WAVE'
-          AND s.shipper_name != 'MUSINSA_USED'
-    """)
+    if cache["b2c"] is None:
+        try:
+            cache["b2c"] = fetch_b2c()
+            cache["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {**cache["b2c"], "last_updated": cache["last_updated"], "from_cache": True}
 
-    floors = query("""
-        SELECT
-            SUBSTRING(l.code, 1, 2)                                                   AS floor,
-            SUM(o.total_planned_quantity)                                              AS total_qty,
-            SUM(CASE WHEN o.assign_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS alloc_qty,
-            SUM(CASE WHEN o.picking_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN o.packing_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pack_qty
-        FROM pbo.logistics.outbound o
-        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
-        JOIN pbo.logistics.outbound_item oi ON oi.outbound_id = o.id
-        JOIN pbo.logistics.mst_location l ON l.id = oi.mst_location_id
-        WHERE DATE(o.ordered_date) = CURRENT_DATE
-          AND o.mst_warehouse_id = 1
-          AND o.order_type NOT IN ('IN_HOUSE','ETC')
-          AND o.delivery_type != 'LOADED_FREIGHT'
-          AND o.outbound_status != 'CANCEL'
-          AND CONCAT(o.assign_status, o.picking_status, o.packing_status, o.outbound_status)
-              != 'NOTHINGREADYNOTHINGCREATED_WAVE'
-          AND s.shipper_name != 'MUSINSA_USED'
-          AND SUBSTRING(l.code, 1, 2) IN ('A1','A2','A3','B1','B2','B3')
-        GROUP BY SUBSTRING(l.code, 1, 2)
-        ORDER BY floor
-    """)
+@app.get("/api/forecast")
+def get_forecast():
+    if cache["forecast"] is None:
+        try:
+            cache["forecast"] = fetch_forecast()
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    fc = cache["forecast"]
+    total = cache["b2c"]["summary"]["total_qty"] if cache["b2c"] else 0
+    return {**fc, "total_qty": total, "last_updated": cache["last_updated"]}
 
-    return {"status": "ok", "summary": summary[0] if summary else {}, "floors": floors}
-
-@app.get("/api/b2b")
-def get_b2b():
-    summary = query("""
-        SELECT
-            SUM(o.total_planned_quantity)                                              AS total_qty,
-            SUM(CASE WHEN o.picking_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN o.packing_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pack_qty,
-            SUM(CASE WHEN o.outbound_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS ship_qty,
-            COUNT(DISTINCT o.to_shop_code)                                            AS store_count
-        FROM pbo.logistics.outbound o
-        WHERE DATE(o.planned_date) = CURRENT_DATE
-          AND o.mst_warehouse_id = 1
-          AND o.outbound_type = 'IN_HOUSE'
-          AND o.delivery_type = 'LOADED_FREIGHT'
-          AND o.group_name LIKE '%그룹%'
-          AND o.outbound_status != 'CANCEL'
-    """)
-
-    groups = query("""
-        SELECT
-            o.group_name,
-            SUM(o.total_planned_quantity)                                              AS total_qty,
-            SUM(CASE WHEN o.picking_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN o.packing_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS pack_qty,
-            SUM(CASE WHEN o.outbound_status = 'COMPLETE' THEN o.total_planned_quantity ELSE 0 END) AS ship_qty
-        FROM pbo.logistics.outbound o
-        WHERE DATE(o.planned_date) = CURRENT_DATE
-          AND o.mst_warehouse_id = 1
-          AND o.outbound_type = 'IN_HOUSE'
-          AND o.delivery_type = 'LOADED_FREIGHT'
-          AND o.group_name LIKE '%그룹%'
-          AND o.outbound_status != 'CANCEL'
-        GROUP BY o.group_name
-        ORDER BY total_qty DESC
-    """)
-
-    return {"status": "ok", "summary": summary[0] if summary else {}, "groups": groups}
+@app.get("/api/status")
+def get_status():
+    return {
+        "last_updated": cache["last_updated"],
+        "is_loading": cache["is_loading"],
+        "has_cache": cache["b2c"] is not None
+    }
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
