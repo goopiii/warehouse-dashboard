@@ -81,10 +81,25 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
 
 <div class="header">
   <div class="header-left">
-    <span class="center-badge">신여주1센터</span>
-    <span class="header-title">B2C 출고 현황판</span>
+    <select id="center-select" onchange="onCenterChange(this.value)" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer;outline:none">
+      <option value="NWH01">신여주1</option>
+      <option value="NWH02">신여주2</option>
+      <option value="NWH03">신여주3</option>
+      <option value="YEJ04">신여주4</option>
+      <option value="ANS01">안성1</option>
+    </select>
+    <span class="header-title" id="center-title">신여주1센터 B2C 출고 현황판</span>
   </div>
-  <div class="header-right">
+  <div class="header-right" style="display:flex;align-items:center;gap:12px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="date" id="date-select"
+        style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none"
+        onchange="onDateChange(this.value)">
+      <button onclick="resetToToday()"
+        style="background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">
+        오늘
+      </button>
+    </div>
     <span class="refresh-badge" id="next-refresh">다음 갱신: 10분 후</span>
     <span class="header-time" id="clock"></span>
   </div>
@@ -137,7 +152,7 @@ let lastUpdated = '-';
 
 async function loadForecast() {
   try {
-    const res = await fetch('http://192.168.0.154:8000/api/forecast');
+    const res = await fetch('/api/forecast?center=' + currentCenter + '&date=' + currentDate);
     const d = await res.json();
     if (d.status !== 'ok') return;
     const f = d.forecast || {};
@@ -159,7 +174,7 @@ async function loadForecast() {
 
 async function loadB2C() {
   try {
-    const res = await fetch('http://192.168.0.154:8000/api/b2c');
+    const res = await fetch('/api/b2c?center=' + currentCenter + '&date=' + currentDate);
     const d = await res.json();
     if (d.last_updated) lastUpdated = d.last_updated;
     document.getElementById('fc-updated').textContent = '기준: ' + lastUpdated;
@@ -219,11 +234,15 @@ async function loadB2C() {
       </div>
     `;
 
-    // 섹션3: 구역별
-    const floorsByDong = {A:[], B:[]};
-    floors.forEach(f => {
-      if (f.floor?.startsWith('A')) floorsByDong.A.push(f);
-      else if (f.floor?.startsWith('B')) floorsByDong.B.push(f);
+    // 섹션3: 구역별 — API에서 받은 dongs 구성으로 동적 렌더링
+    const dongs = d.dongs || {"A동": [], "B동": []};
+    const floorMap = {};
+    floors.forEach(f => { floorMap[f.floor] = f; });
+    const floorsByDong = {};
+    Object.keys(dongs).forEach(dongName => {
+      floorsByDong[dongName] = dongs[dongName]
+        .filter(code => floorMap[code])
+        .map(code => floorMap[code]);
     });
 
     const floorBar = (fillPct, color, doneVal, label) => `
@@ -265,15 +284,14 @@ async function loadB2C() {
         <span class="floor-th" style="font-size:28px">패킹</span>
       </div>`;
 
-    document.getElementById('floors-section').innerHTML = `
+    const dongNames = Object.keys(floorsByDong).filter(d => floorsByDong[d].length > 0);
+    const dongCols = dongNames.length === 1 ? '1fr' : '1fr 1fr';
+    document.getElementById('floors-section').style.gridTemplateColumns = dongCols;
+    document.getElementById('floors-section').innerHTML = dongNames.map(dongName => `
       <div class="floor-group">
-        <div class="floor-group-header">A동</div>
-        ${tableHead}${renderRows(floorsByDong.A)}
-      </div>
-      <div class="floor-group">
-        <div class="floor-group-header">B동</div>
-        ${tableHead}${renderRows(floorsByDong.B)}
-      </div>`;
+        <div class="floor-group-header">${dongName}</div>
+        ${tableHead}${renderRows(floorsByDong[dongName])}
+      </div>`).join('');
   } catch(e) {
     document.getElementById('progress-section').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
   }
@@ -295,7 +313,54 @@ function refreshCountdown() {
   document.getElementById('next-refresh').textContent = `다음 갱신: ${m}분 ${String(s).padStart(2,'0')}초 후`;
 }
 
+let currentCenter = 'NWH01';
+let currentDate = new Date().toISOString().slice(0,10);  // 오늘 날짜로 초기화
+
+function onDateChange(date) {
+  currentDate = date;
+  // 날짜 무관하게 자동갱신 항상 유지
+  nextRefreshSec = 600;
+  document.getElementById('progress-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
+  document.getElementById('floors-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
+  loadAll();
+}
+
+function resetToToday() {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('date-select').value = today;
+  currentDate = today;
+  nextRefreshSec = 600;
+  loadAll();
+}
+
+const CENTER_TITLES = {
+  'NWH01': '신여주1센터',
+  'NWH02': '신여주2센터',
+  'NWH03': '신여주3센터',
+  'YEJ04': '신여주4센터',
+  'ANS01': '안성1센터',
+};
+
+function onCenterChange(code) {
+  currentCenter = code;
+  document.getElementById('center-title').textContent = CENTER_TITLES[code] + ' B2C 출고 현황판';
+  document.getElementById('progress-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
+  document.getElementById('floors-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
+  document.getElementById('fc-value').textContent = '-';
+  document.getElementById('fc-current').textContent = '-';
+  document.getElementById('fc-pct').textContent = '- %';
+  document.getElementById('fc-bar').style.width = '0%';
+  document.getElementById('fc-remain').textContent = '잔여: -';
+  nextRefreshSec = 600;
+  loadAll();
+}
+
 function loadAll() { loadForecast(); loadB2C(); }
+// 날짜 선택기 오늘로 초기화
+const todayStr = new Date().toISOString().slice(0,10);
+document.getElementById('date-select').value = todayStr;
+currentDate = todayStr;
+
 loadAll();
 tick(); setInterval(tick,1000);
 setInterval(refreshCountdown,1000);
