@@ -61,9 +61,9 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
 .section-floors{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .floor-group{background:#fff;border-radius:10px;overflow:hidden;border:0.5px solid #e5e7eb}
 .floor-group-header{background:#111827;padding:8px 16px;font-size:13px;font-weight:700;color:#f9fafb}
-.floor-table-head{display:grid;grid-template-columns:44px repeat(3,1fr);padding:8px 16px;background:#f9fafb;border-bottom:0.5px solid #e5e7eb}
+.floor-table-head{display:grid;grid-template-columns:44px 0.7fr 1.15fr 1.15fr;padding:8px 16px;background:#f9fafb;border-bottom:0.5px solid #e5e7eb}
 .floor-th{text-align:right;font-size:14px;font-weight:700;color:#111827}
-.floor-row{display:grid;grid-template-columns:44px repeat(3,1fr);padding:12px 16px;border-top:0.5px solid #f3f4f6;align-items:start}
+.floor-row{display:grid;grid-template-columns:44px 0.7fr 1.15fr 1.15fr;padding:12px 16px;border-top:0.5px solid #f3f4f6;align-items:start}
 .floor-row:hover{background:#fafafa}
 .floor-name{font-size:18px;font-weight:700;color:#111827;padding-top:4px}
 .floor-cell{text-align:right}
@@ -91,7 +91,19 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
     <span class="header-title" id="center-title">신여주1센터 B2C 출고 현황판</span>
   </div>
   <div class="header-right" style="display:flex;align-items:center;gap:12px">
-    <div style="display:flex;align-items:center;gap:6px">
+    <!-- 탭 전환 -->
+    <div style="display:flex;background:#1f2937;border-radius:7px;padding:3px;gap:2px">
+      <button id="tab-today" onclick="switchTab('today')"
+        style="background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer">
+        오늘
+      </button>
+      <button id="tab-range" onclick="switchTab('range')"
+        style="background:transparent;color:#6b7280;border:none;border-radius:5px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer">
+        누적
+      </button>
+    </div>
+    <!-- 오늘 탭 컨트롤 -->
+    <div id="ctrl-today" style="display:flex;align-items:center;gap:6px">
       <input type="date" id="date-select"
         style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none"
         onchange="onDateChange(this.value)">
@@ -100,13 +112,33 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
         오늘
       </button>
     </div>
+    <!-- 누적 탭 컨트롤 -->
+    <div id="ctrl-range" style="display:none;align-items:center;gap:6px">
+      <input type="date" id="range-start"
+        style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none">
+      <span style="color:#6b7280;font-size:13px">~</span>
+      <input type="date" id="range-end"
+        style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none">
+      <button onclick="setPreset('3d')"
+        style="background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">
+        3일
+      </button>
+      <button onclick="setPreset('7d')"
+        style="background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">
+        7일
+      </button>
+      <button onclick="loadRange()"
+        style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer">
+        조회
+      </button>
+    </div>
     <span class="refresh-badge" id="next-refresh">다음 갱신: 10분 후</span>
     <span class="header-time" id="clock"></span>
   </div>
 </div>
 
 <div class="content">
-  <!-- 섹션1: 예측/목표 -->
+  <!-- 섹션1: 예측/목표 (오늘 탭) -->
   <div class="section-forecast" id="forecast-section">
     <div class="fc-main">
       <div class="fc-label">오늘 예측치</div>
@@ -131,7 +163,24 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
         <span style="font-size:14px;color:#fff;font-weight:700" id="fc-updated"></span>
       </div>
     </div>
+  </div>
 
+  <!-- 섹션1: 기간 배너 (누적 탭) -->
+  <div id="range-banner" style="display:none;background:#111827;border-radius:10px;padding:16px 22px;align-items:center;gap:0">
+    <div style="flex:0 0 auto;margin-right:32px">
+      <div style="font-size:13px;color:#9ca3af;font-weight:700;margin-bottom:4px">조회 기간</div>
+      <div style="font-size:28px;font-weight:700;color:#fff" id="range-label">-</div>
+      <div style="font-size:13px;color:#9ca3af;margin-top:4px" id="range-days">-</div>
+    </div>
+    <div style="width:1px;background:#374151;height:60px;margin-right:32px;flex-shrink:0"></div>
+    <div style="flex:1">
+      <div style="font-size:13px;color:#9ca3af;font-weight:700;margin-bottom:4px">누적 수신 주문수량</div>
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-size:48px;font-weight:700;color:#60a5fa" id="range-total">-</span>
+        <span style="font-size:16px;color:#fff;font-weight:700">PCS</span>
+      </div>
+    </div>
+    <div style="font-size:13px;color:#6b7280;margin-left:auto" id="range-updated"></div>
   </div>
 
   <!-- 섹션2: 진행현황 -->
@@ -149,7 +198,93 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
 const fmt = n => n == null ? '-' : Number(n).toLocaleString();
 const pct = (v, t) => t > 0 ? Math.round(v / t * 100) : 0;
 let lastUpdated = '-';
+let currentTab = 'today';  // 'today' | 'range'
 
+// ── 탭 전환 ──────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  const isRange = tab === 'range';
+
+  // 탭 버튼 스타일
+  document.getElementById('tab-today').style.background = isRange ? 'transparent' : '#3b82f6';
+  document.getElementById('tab-today').style.color      = isRange ? '#6b7280' : '#fff';
+  document.getElementById('tab-range').style.background = isRange ? '#3b82f6' : 'transparent';
+  document.getElementById('tab-range').style.color      = isRange ? '#fff' : '#6b7280';
+
+  // 컨트롤 표시
+  document.getElementById('ctrl-today').style.display = isRange ? 'none' : 'flex';
+  document.getElementById('ctrl-range').style.display = isRange ? 'flex' : 'none';
+
+  // 배너 교체
+  document.getElementById('forecast-section').style.display = isRange ? 'none' : 'flex';
+  document.getElementById('range-banner').style.display     = isRange ? 'flex' : 'none';
+
+
+  if (isRange) {
+    // 누적 탭 초기 진입 시 기간 미선택 상태면 3일 기본 세팅
+    if (!document.getElementById('range-start').value) setPreset('3d');
+    document.getElementById('progress-section').innerHTML = '<div class="loading">기간을 선택하고 조회 버튼을 누르세요</div>';
+    document.getElementById('floors-section').innerHTML   = '';
+    document.getElementById('range-total').textContent   = '-';
+    document.getElementById('range-label').textContent   = '-';
+    document.getElementById('range-days').textContent    = '';
+  } else {
+    loadAll();
+  }
+}
+
+// ── 프리셋 ────────────────────────────────────────────
+function setPreset(preset) {
+  const today = new Date();
+  const fmt0  = d => d.toISOString().slice(0,10);
+  let start, end;
+  if (preset === 'mujinjang') {
+    start = '2026-06-14';
+    end   = fmt0(today);
+  } else if (preset === '3d') {
+    const s = new Date(today); s.setDate(today.getDate() - 2);
+    start = fmt0(s); end = fmt0(today);
+  } else if (preset === '7d') {
+    const s = new Date(today); s.setDate(today.getDate() - 6);
+    start = fmt0(s); end = fmt0(today);
+  }
+  document.getElementById('range-start').value = start;
+  document.getElementById('range-end').value   = end;
+}
+
+// ── 누적 조회 ─────────────────────────────────────────
+async function loadRange() {
+  const start = document.getElementById('range-start').value;
+  const end   = document.getElementById('range-end').value;
+  if (!start || !end) { alert('시작일과 종료일을 선택하세요.'); return; }
+  if (start > end) { alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+
+  document.getElementById('progress-section').innerHTML = '<div class="loading">누적 데이터 불러오는 중...</div>';
+  document.getElementById('floors-section').innerHTML   = '<div class="loading">누적 데이터 불러오는 중...</div>';
+  document.getElementById('range-total').textContent    = '...';
+
+  try {
+    const res = await fetch(`/api/b2c_range?center=${currentCenter}&start=${start}&end=${end}`);
+    const d   = await res.json();
+    if (d.status !== 'ok') { throw new Error(d.message); }
+
+    // 배너 업데이트
+    const s1 = start.slice(5).replace('-','/'), s2 = end.slice(5).replace('-','/');
+    const days = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+    document.getElementById('range-label').textContent   = `${s1} ~ ${s2}`;
+    document.getElementById('range-days').textContent    = `${days}일간 누적`;
+    document.getElementById('range-total').textContent   = fmt(d.summary?.total_qty);
+    document.getElementById('range-updated').textContent = '기준: ' + (d.last_updated || '-');
+
+    // KPI + 구역 공통 렌더러 재사용
+    renderProgress(d);
+    renderFloors(d);
+  } catch(e) {
+    document.getElementById('progress-section').innerHTML = `<div class="error-msg">조회 실패: ${e.message}</div>`;
+  }
+}
+
+// ── 오늘 탭 ──────────────────────────────────────────
 async function loadForecast() {
   try {
     const res = await fetch('/api/forecast?center=' + currentCenter + '&date=' + currentDate);
@@ -165,8 +300,6 @@ async function loadForecast() {
     document.getElementById('fc-pct').textContent = p + '%';
     document.getElementById('fc-bar').style.width = Math.min(p, 100) + '%';
     document.getElementById('fc-remain').textContent = '잔여: ' + fmt(fcst - totalQty) + ' PCS';
-    document.getElementById('fc-yoy').textContent = fmt('-');
-    document.getElementById('fc-wow').textContent = fmt('-');
   } catch(e) {
     console.error('forecast error', e);
   }
@@ -178,123 +311,125 @@ async function loadB2C() {
     const d = await res.json();
     if (d.last_updated) lastUpdated = d.last_updated;
     document.getElementById('fc-updated').textContent = '기준: ' + lastUpdated;
-
-    const s = d.summary || {};
-    const floors = d.floors || [];
-    const totalQty = Number(s.total_qty || 0);
-    const allocQty = Number(s.alloc_qty || 0);
-    const pickQty  = Number(s.pick_qty  || 0);
-    const packQty  = Number(s.pack_qty  || 0);
-    const unalloc  = totalQty - allocQty;
-    const unpick   = allocQty - pickQty;
-    const unpack   = allocQty - packQty;
-
-    // 섹션2: 진행현황
-    document.getElementById('progress-section').innerHTML = `
-      <div class="prog-card">
-        <div class="prog-label" style="color:#111827">총 주문수량</div>
-        <div class="prog-value" style="color:#111827">${fmt(totalQty)}</div>
-        <div style="font-size:11px;color:#9ca3af;margin-top:4px">당일 무배당발 기준</div>
-      </div>
-      <div class="prog-card highlight-blue">
-        <div class="prog-label" style="color:#111827">할당완료</div>
-        <div class="prog-value" style="color:#111827">${fmt(allocQty)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(allocQty,totalQty)}%;background:#1d4ed8"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(allocQty,totalQty)}%</div>
-      </div>
-      <div class="prog-card highlight-red">
-        <div class="prog-label red">미할당</div>
-        <div class="prog-value red">${fmt(unalloc)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unalloc,totalQty)}%;background:#dc2626"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unalloc,totalQty)}%</div>
-      </div>
-      <div class="prog-card">
-        <div class="prog-label" style="color:#111827">피킹완료</div>
-        <div class="prog-value" style="color:#111827">${fmt(pickQty)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(pickQty,allocQty)}%;background:#d97706"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(pickQty,allocQty)}%</div>
-      </div>
-      <div class="prog-card highlight-red">
-        <div class="prog-label red">미피킹</div>
-        <div class="prog-value red">${fmt(unpick)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpick,allocQty)}%;background:#dc2626"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpick,allocQty)}%</div>
-      </div>
-      <div class="prog-card">
-        <div class="prog-label" style="color:#111827">패킹완료</div>
-        <div class="prog-value" style="color:#111827">${fmt(packQty)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(packQty,allocQty)}%;background:#059669"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#111827">${pct(packQty,allocQty)}%</div>
-      </div>
-      <div class="prog-card highlight-red">
-        <div class="prog-label red">미패킹</div>
-        <div class="prog-value red">${fmt(unpack)}</div>
-        <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpack,allocQty)}%;background:#dc2626"></div></div>
-        <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpack,allocQty)}%</div>
-      </div>
-    `;
-
-    // 섹션3: 구역별 — API에서 받은 dongs 구성으로 동적 렌더링
-    const dongs = d.dongs || {"A동": [], "B동": []};
-    const floorMap = {};
-    floors.forEach(f => { floorMap[f.floor] = f; });
-    const floorsByDong = {};
-    Object.keys(dongs).forEach(dongName => {
-      floorsByDong[dongName] = dongs[dongName]
-        .filter(code => floorMap[code])
-        .map(code => floorMap[code]);
-    });
-
-    const floorBar = (fillPct, color, doneVal, label) => `
-      <div style="text-align:right">
-        <span style="font-size:36px;font-weight:700;color:#111827">${doneVal}</span>
-      </div>`;
-
-    const renderRows = (rows) => rows.map(r => {
-      const tot    = Number(r.total_qty||0);
-      const al     = Number(r.alloc_qty||0);
-      const pi     = Number(r.pick_qty||0);
-      const pa     = Number(r.pack_qty||0);
-      const unpick = Number(r.unpick_qty||0);
-      const unpack = Number(r.unpack_qty||0);
-      const floorLabel = {'A1':'A동\n1층','A2':'A동\n2층','A3':'A동\n3층','B1':'B동\n1층','B2':'B동\n2층','B3':'B동\n3층'};
-      return `
-        <div class="floor-row">
-          <span class="floor-name" style="font-size:20px;white-space:pre-line;line-height:1.3">${floorLabel[r.floor]||r.floor}</span>
-          <div class="floor-cell">
-            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(al)}</div>
-            <div style="text-align:right;font-size:42px;font-weight:700;color:${(tot-al)>0?'#dc2626':'#d1d5db'}">${fmt(tot-al)} 미할당</div>
-          </div>
-          <div class="floor-cell">
-            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pi)}</div>
-            <div style="text-align:right;font-size:42px;font-weight:700;color:${unpick>0?'#dc2626':'#d1d5db'}">${fmt(unpick)} 미피킹</div>
-          </div>
-          <div class="floor-cell">
-            <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pa)}</div>
-            <div style="text-align:right;font-size:42px;font-weight:700;color:${unpack>0?'#dc2626':'#d1d5db'}">${fmt(unpack)} 미패킹</div>
-          </div>
-        </div>`;
-    }).join('');
-
-    const tableHead = `
-      <div class="floor-table-head">
-        <span></span>
-        <span class="floor-th" style="font-size:28px">할당</span>
-        <span class="floor-th" style="font-size:28px">피킹</span>
-        <span class="floor-th" style="font-size:28px">패킹</span>
-      </div>`;
-
-    const dongNames = Object.keys(floorsByDong).filter(d => floorsByDong[d].length > 0);
-    const dongCols = dongNames.length === 1 ? '1fr' : '1fr 1fr';
-    document.getElementById('floors-section').style.gridTemplateColumns = dongCols;
-    document.getElementById('floors-section').innerHTML = dongNames.map(dongName => `
-      <div class="floor-group">
-        <div class="floor-group-header">${dongName}</div>
-        ${tableHead}${renderRows(floorsByDong[dongName])}
-      </div>`).join('');
+    renderProgress(d);
+    renderFloors(d);
   } catch(e) {
     document.getElementById('progress-section').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
   }
+}
+
+// ── 공통 렌더러 ───────────────────────────────────────
+function renderProgress(d) {
+  const s = d.summary || {};
+  const totalQty = Number(s.total_qty || 0);
+  const allocQty = Number(s.alloc_qty || 0);
+  const pickQty  = Number(s.pick_qty  || 0);
+  const packQty  = Number(s.pack_qty  || 0);
+  const unalloc  = totalQty - allocQty;
+  const unpick   = allocQty - pickQty;
+  const unpack   = allocQty - packQty;
+
+  const subLabel = currentTab === 'range' ? '누적 무배당발 기준' : '당일 무배당발 기준';
+
+  document.getElementById('progress-section').innerHTML = `
+    <div class="prog-card">
+      <div class="prog-label" style="color:#111827">총 주문수량</div>
+      <div class="prog-value" style="color:#111827">${fmt(totalQty)}</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px">${subLabel}</div>
+    </div>
+    <div class="prog-card highlight-blue">
+      <div class="prog-label" style="color:#111827">할당완료</div>
+      <div class="prog-value" style="color:#111827">${fmt(allocQty)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(allocQty,totalQty)}%;background:#1d4ed8"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#111827">${pct(allocQty,totalQty)}%</div>
+    </div>
+    <div class="prog-card highlight-red">
+      <div class="prog-label red">미할당</div>
+      <div class="prog-value red">${fmt(unalloc)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unalloc,totalQty)}%;background:#dc2626"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unalloc,totalQty)}%</div>
+    </div>
+    <div class="prog-card">
+      <div class="prog-label" style="color:#111827">피킹완료</div>
+      <div class="prog-value" style="color:#111827">${fmt(pickQty)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(pickQty,allocQty)}%;background:#d97706"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#111827">${pct(pickQty,allocQty)}%</div>
+    </div>
+    <div class="prog-card highlight-red">
+      <div class="prog-label red">미피킹</div>
+      <div class="prog-value red">${fmt(unpick)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpick,allocQty)}%;background:#dc2626"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpick,allocQty)}%</div>
+    </div>
+    <div class="prog-card">
+      <div class="prog-label" style="color:#111827">패킹완료</div>
+      <div class="prog-value" style="color:#111827">${fmt(packQty)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(packQty,allocQty)}%;background:#059669"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#111827">${pct(packQty,allocQty)}%</div>
+    </div>
+    <div class="prog-card highlight-red">
+      <div class="prog-label red">미패킹</div>
+      <div class="prog-value red">${fmt(unpack)}</div>
+      <div class="pbar-wrap"><div class="pbar-fill" style="width:${pct(unpack,allocQty)}%;background:#dc2626"></div></div>
+      <div class="prog-pct" style="font-size:20px;color:#dc2626">${pct(unpack,allocQty)}%</div>
+    </div>
+  `;
+}
+
+function renderFloors(d) {
+  const floors = d.floors || [];
+  const dongs = d.dongs || {"A동": [], "B동": []};
+  const floorMap = {};
+  floors.forEach(f => { floorMap[f.floor] = f; });
+  const floorsByDong = {};
+  Object.keys(dongs).forEach(dongName => {
+    floorsByDong[dongName] = dongs[dongName]
+      .filter(code => floorMap[code])
+      .map(code => floorMap[code]);
+  });
+
+  const renderRows = (rows) => rows.map(r => {
+    const tot    = Number(r.total_qty||0);
+    const al     = Number(r.alloc_qty||0);
+    const pi     = Number(r.pick_qty||0);
+    const pa     = Number(r.pack_qty||0);
+    const unpick = Number(r.unpick_qty||0);
+    const unpack = Number(r.unpack_qty||0);
+    const floorLabel = {'A1':'A동\n1층','A2':'A동\n2층','A3':'A동\n3층','B1':'B동\n1층','B2':'B동\n2층','B3':'B동\n3층'};
+    return `
+      <div class="floor-row">
+        <span class="floor-name" style="font-size:20px;white-space:pre-line;line-height:1.3">${floorLabel[r.floor]||r.floor}</span>
+        <div class="floor-cell">
+          <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(al)}</div>
+          <div style="text-align:right;font-size:42px;font-weight:700;color:${(tot-al)>0?'#dc2626':'#d1d5db'}">${fmt(tot-al)} 미할당</div>
+        </div>
+        <div class="floor-cell">
+          <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pi)}</div>
+          <div style="text-align:right;font-size:42px;font-weight:700;color:${unpick>0?'#dc2626':'#d1d5db'}">${fmt(unpick)} 미피킹</div>
+        </div>
+        <div class="floor-cell">
+          <div style="text-align:right;font-size:28px;font-weight:700;color:#111827;margin-bottom:4px">${fmt(pa)}</div>
+          <div style="text-align:right;font-size:42px;font-weight:700;color:${unpack>0?'#dc2626':'#d1d5db'}">${fmt(unpack)} 미패킹</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const tableHead = `
+    <div class="floor-table-head">
+      <span></span>
+      <span class="floor-th" style="font-size:28px">할당</span>
+      <span class="floor-th" style="font-size:28px">피킹</span>
+      <span class="floor-th" style="font-size:28px">패킹</span>
+    </div>`;
+
+  const dongNames = Object.keys(floorsByDong).filter(d => floorsByDong[d].length > 0);
+  const dongCols = dongNames.length === 1 ? '1fr' : '1fr 1fr';
+  document.getElementById('floors-section').style.gridTemplateColumns = dongCols;
+  document.getElementById('floors-section').innerHTML = dongNames.map(dongName => `
+    <div class="floor-group">
+      <div class="floor-group-header">${dongName}</div>
+      ${tableHead}${renderRows(floorsByDong[dongName])}
+    </div>`).join('');
 }
 
 function tick() {
@@ -307,18 +442,26 @@ function tick() {
 let nextRefreshSec = 600;
 function refreshCountdown() {
   nextRefreshSec--;
-  if (nextRefreshSec <= 0) { nextRefreshSec = 600; loadAll(); }
+  if (nextRefreshSec <= 0) {
+    nextRefreshSec = 600;
+    if (currentTab === 'range') {
+      const start = document.getElementById('range-start').value;
+      const end   = document.getElementById('range-end').value;
+      if (start && end) loadRange();
+    } else {
+      loadAll();
+    }
+  }
   const m = Math.floor(nextRefreshSec/60);
   const s = nextRefreshSec%60;
   document.getElementById('next-refresh').textContent = `다음 갱신: ${m}분 ${String(s).padStart(2,'0')}초 후`;
 }
 
 let currentCenter = 'NWH01';
-let currentDate = new Date().toISOString().slice(0,10);  // 오늘 날짜로 초기화
+let currentDate = new Date().toISOString().slice(0,10);
 
 function onDateChange(date) {
   currentDate = date;
-  // 날짜 무관하게 자동갱신 항상 유지
   nextRefreshSec = 600;
   document.getElementById('progress-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
   document.getElementById('floors-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
@@ -352,11 +495,12 @@ function onCenterChange(code) {
   document.getElementById('fc-bar').style.width = '0%';
   document.getElementById('fc-remain').textContent = '잔여: -';
   nextRefreshSec = 600;
-  loadAll();
+  if (currentTab === 'today') loadAll();
 }
 
 function loadAll() { loadForecast(); loadB2C(); }
-// 날짜 선택기 오늘로 초기화
+
+// 초기화
 const todayStr = new Date().toISOString().slice(0,10);
 document.getElementById('date-select').value = todayStr;
 currentDate = todayStr;
@@ -365,5 +509,6 @@ loadAll();
 tick(); setInterval(tick,1000);
 setInterval(refreshCountdown,1000);
 </script>
+
 </body>
 </html>

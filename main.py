@@ -48,11 +48,13 @@ def query(sql):
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
 
-def b2c_where(wh_id):
-    return f"""
-    SUBSTRING(o.cut_off_no, 1, 10)
+def b2c_where(wh_id, date_cond=None):
+    if date_cond is None:
+        date_cond = """SUBSTRING(o.cut_off_no, 1, 10)
         BETWEEN CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE, 1), 'yyyyMMdd'), '23')
-            AND CONCAT(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd'), '22')
+            AND CONCAT(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd'), '22')"""
+    return f"""
+    {date_cond}
     AND o.mst_warehouse_id = {wh_id}
     AND o.order_type NOT IN ('IN_HOUSE','ETC')
     AND o.delivery_type != 'LOADED_FREIGHT'
@@ -62,6 +64,22 @@ def b2c_where(wh_id):
     AND s.shipper_name != 'MUSINSA_USED'
     """
 
+def make_date_cond(target_date=None, start_date=None, end_date=None):
+    """무배당발 날짜 조건 생성. 단일 날짜 또는 범위 지원."""
+    from datetime import datetime, timedelta
+    if start_date and end_date:
+        # 범위: 시작일-1일 23시 ~ 종료일 22시
+        dt_start = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=1)
+        dt_end   = datetime.strptime(end_date,   "%Y-%m-%d")
+        return f"SUBSTRING(o.cut_off_no, 1, 10) BETWEEN '{dt_start.strftime('%Y%m%d')}23' AND '{dt_end.strftime('%Y%m%d')}22'"
+    elif target_date:
+        # 단일 날짜
+        dt      = datetime.strptime(target_date, "%Y-%m-%d")
+        dt_prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
+        dt_curr = dt.strftime("%Y%m%d")
+        return f"SUBSTRING(o.cut_off_no, 1, 10) BETWEEN '{dt_prev}23' AND '{dt_curr}22'"
+    return None  # 오늘(기본)
+
 def area_join():
     return """
     JOIN pbo.logistics.mst_location l ON l.id = oa.mst_location_id
@@ -69,25 +87,14 @@ def area_join():
     JOIN pbo.logistics.mst_area a ON a.id = z.mst_area_id
     """
 
-def fetch_b2c(center_code, target_date=None):
+def fetch_b2c(center_code, target_date=None, start_date=None, end_date=None):
     c = CENTERS[center_code]
     wh_id = c["id"]
     areas = c["areas"]
     area_list = "'" + "','".join(areas) + "'"
-    where = b2c_where(wh_id)
+    date_cond = make_date_cond(target_date=target_date, start_date=start_date, end_date=end_date)
+    where = b2c_where(wh_id, date_cond)
     ajoin = area_join()
-
-    # 날짜별 무배당발 조건 생성
-    if target_date:
-        from datetime import datetime, timedelta
-        dt = datetime.strptime(target_date, "%Y-%m-%d")
-        dt_prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
-        dt_curr = dt.strftime("%Y%m%d")
-        date_cond = f"SUBSTRING(o.cut_off_no, 1, 10) BETWEEN '{dt_prev}23' AND '{dt_curr}22'"
-        where = where.replace(
-            "SUBSTRING(o.cut_off_no, 1, 10)\n        BETWEEN CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE, 1), 'yyyyMMdd'), '23')\n            AND CONCAT(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd'), '22')",
-            date_cond
-        )
 
     total = query(f"""
         SELECT SUM(o.total_planned_quantity) AS total_qty
@@ -184,7 +191,7 @@ def get_b2c(center: str = Query(default="NWH01"), date: str = Query(default=""))
     # 날짜 선택 시 캐시 무시하고 직접 조회
     if date and date != time.strftime("%Y-%m-%d"):
         try:
-            data = fetch_b2c(center, date)
+            data = fetch_b2c(center, target_date=date)
             return {**data, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"), "selected_date": date}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -195,6 +202,20 @@ def get_b2c(center: str = Query(default="NWH01"), date: str = Query(default=""))
         except Exception as e:
             return {"status": "error", "message": str(e)}
     return {**cache[center]["b2c"], "last_updated": cache[center]["last_updated"]}
+
+@app.get("/api/b2c_range")
+def get_b2c_range(center: str = Query(default="NWH01"),
+                  start: str = Query(...),
+                  end: str = Query(...)):
+    """누적 탭용 날짜 범위 조회. start/end = YYYY-MM-DD, 캐시 없이 직접 조회."""
+    if center not in CENTERS:
+        return {"status": "error", "message": "센터 코드 오류"}
+    try:
+        data = fetch_b2c(center, start_date=start, end_date=end)
+        return {**data, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "start_date": start, "end_date": end}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/forecast")
 def get_forecast(center: str = Query(default="NWH01"), date: str = Query(default="")):
