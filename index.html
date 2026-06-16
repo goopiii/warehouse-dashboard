@@ -105,11 +105,14 @@ body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
     <!-- 오늘 탭 컨트롤 -->
     <div id="ctrl-today" style="display:flex;align-items:center;gap:6px">
       <input type="date" id="date-select"
-        style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none"
-        onchange="onDateChange(this.value)">
+        style="background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;outline:none">
       <button onclick="resetToToday()"
         style="background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">
         오늘
+      </button>
+      <button onclick="onDateQuery()"
+        style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer">
+        조회
       </button>
     </div>
     <!-- 누적 탭 컨트롤 -->
@@ -264,7 +267,7 @@ async function loadRange() {
   document.getElementById('range-total').textContent    = '...';
 
   try {
-    const res = await fetch(`/api/b2c_range?center=${currentCenter}&start=${start}&end=${end}`);
+    const res = await fetch(`/api/dashboard_range?center=${currentCenter}&start=${start}&end=${end}`);
     const d   = await res.json();
     if (d.status !== 'ok') { throw new Error(d.message); }
 
@@ -275,6 +278,7 @@ async function loadRange() {
     document.getElementById('range-days').textContent    = `${days}일간 누적`;
     document.getElementById('range-total').textContent   = fmt(d.summary?.total_qty);
     document.getElementById('range-updated').textContent = '기준: ' + (d.last_updated || '-');
+    if (d.last_updated) lastUpdated = d.last_updated;
 
     // KPI + 구역 공통 렌더러 재사용
     renderProgress(d);
@@ -285,38 +289,37 @@ async function loadRange() {
 }
 
 // ── 오늘 탭 ──────────────────────────────────────────
-async function loadForecast() {
+async function loadDashboard() {
   try {
-    const res = await fetch('/api/forecast?center=' + currentCenter + '&date=' + currentDate);
+    const res = await fetch('/api/dashboard?center=' + currentCenter + '&date=' + currentDate);
     const d = await res.json();
-    if (d.status !== 'ok') return;
-    const f = d.forecast || {};
-    const totalQty = Number(d.total_qty || 0);
-    const fcst = Number(f.fcst_total || 0);
-    const p = pct(totalQty, fcst);
+    if (d.status !== 'ok') throw new Error(d.message);
 
-    document.getElementById('fc-value').textContent = fmt(fcst);
+    // 예측치 배너
+    const fcst     = Number(d.fcst_total || 0);
+    const totalQty = Number(d.summary?.total_qty || 0);
+    const p        = fcst > 0 ? Math.round(totalQty / fcst * 100) : 0;
+    document.getElementById('fc-value').textContent   = fmt(fcst);
     document.getElementById('fc-current').textContent = fmt(totalQty);
-    document.getElementById('fc-pct').textContent = p + '%';
-    document.getElementById('fc-bar').style.width = Math.min(p, 100) + '%';
-    document.getElementById('fc-remain').textContent = '잔여: ' + fmt(fcst - totalQty) + ' PCS';
-  } catch(e) {
-    console.error('forecast error', e);
-  }
-}
+    document.getElementById('fc-pct').textContent     = p + '%';
+    document.getElementById('fc-bar').style.width     = Math.min(p, 100) + '%';
+    document.getElementById('fc-remain').textContent  = '잔여: ' + fmt(fcst - totalQty) + ' PCS';
 
-async function loadB2C() {
-  try {
-    const res = await fetch('/api/b2c?center=' + currentCenter + '&date=' + currentDate);
-    const d = await res.json();
+    // 기준시각
     if (d.last_updated) lastUpdated = d.last_updated;
     document.getElementById('fc-updated').textContent = '기준: ' + lastUpdated;
+
+    // KPI + 구역
     renderProgress(d);
     renderFloors(d);
   } catch(e) {
     document.getElementById('progress-section').innerHTML = `<div class="error-msg">데이터 로드 실패: ${e.message}</div>`;
   }
 }
+
+// 하위 호환
+async function loadForecast() {}
+async function loadB2C() { await loadDashboard(); }
 
 // ── 공통 렌더러 ───────────────────────────────────────
 function renderProgress(d) {
@@ -460,7 +463,9 @@ function refreshCountdown() {
 let currentCenter = 'NWH01';
 let currentDate = new Date().toISOString().slice(0,10);
 
-function onDateChange(date) {
+function onDateQuery() {
+  const date = document.getElementById('date-select').value;
+  if (!date) return;
   currentDate = date;
   nextRefreshSec = 600;
   document.getElementById('progress-section').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
@@ -473,7 +478,6 @@ function resetToToday() {
   document.getElementById('date-select').value = today;
   currentDate = today;
   nextRefreshSec = 600;
-  loadAll();
 }
 
 const CENTER_TITLES = {
@@ -498,7 +502,7 @@ function onCenterChange(code) {
   if (currentTab === 'today') loadAll();
 }
 
-function loadAll() { loadForecast(); loadB2C(); }
+function loadAll() { loadDashboard(); }
 
 // 초기화
 const todayStr = new Date().toISOString().slice(0,10);

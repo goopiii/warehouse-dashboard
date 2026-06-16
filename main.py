@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from concurrent.futures import ThreadPoolExecutor
 import databricks.sql, os, threading, time, logging
 from dotenv import load_dotenv
 
@@ -16,8 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 센터 마스터
-# dongs: 구역을 그룹핑할 동 구성 {"동이름": ["구역코드",...]}
 CENTERS = {
     "NWH01": {"id": 1,  "title": "신여주1", "areas": ["A1","A2","A3","B1","B2","B3"],
               "dongs": {"A동": ["A1","A2","A3"], "B동": ["B1","B2","B3"]}, "wh_nm": "신여주1"},
@@ -31,12 +30,12 @@ CENTERS = {
               "dongs": {"A동": ["A1","A2","A3"]}, "wh_nm": "안성1"},
 }
 
-cache = {}
-for code in CENTERS:
-    cache[code] = {"b2c": None, "forecast": None, "last_updated": None}
-
+# 캐시: 센터별 dashboard 전체 데이터 + 갱신 시각
+cache = {code: {"data": None, "last_updated": None} for code in CENTERS}
 REFRESH_INTERVAL = 600
 
+
+# ── DB 유틸 ──────────────────────────────────────────────────────────────────
 def query(sql):
     with databricks.sql.connect(
         server_hostname=os.getenv("DATABRICKS_HOST"),
@@ -48,11 +47,29 @@ def query(sql):
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
 
-def b2c_where(wh_id, date_cond=None):
-    if date_cond is None:
-        date_cond = """SUBSTRING(o.cut_off_no, 1, 10)
-        BETWEEN CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE, 1), 'yyyyMMdd'), '23')
-            AND CONCAT(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd'), '22')"""
+
+# ── 쿼리 빌더 ────────────────────────────────────────────────────────────────
+def make_date_cond(target_date=None, start_date=None, end_date=None):
+    from datetime import datetime, timedelta
+    if start_date and end_date:
+        dt_start = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=1)
+        dt_end   = datetime.strptime(end_date,   "%Y-%m-%d")
+        return (f"SUBSTRING(o.cut_off_no, 1, 10)"
+                f" BETWEEN '{dt_start.strftime('%Y%m%d')}23'"
+                f" AND '{dt_end.strftime('%Y%m%d')}22'")
+    elif target_date:
+        from datetime import datetime, timedelta
+        dt      = datetime.strptime(target_date, "%Y-%m-%d")
+        dt_prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
+        dt_curr = dt.strftime("%Y%m%d")
+        return (f"SUBSTRING(o.cut_off_no, 1, 10)"
+                f" BETWEEN '{dt_prev}23' AND '{dt_curr}22'")
+    # 오늘 기본
+    return ("SUBSTRING(o.cut_off_no, 1, 10)"
+            " BETWEEN CONCAT(DATE_FORMAT(DATE_SUB(CURRENT_DATE,1),'yyyyMMdd'),'23')"
+            " AND CONCAT(DATE_FORMAT(CURRENT_DATE,'yyyyMMdd'),'22')")
+
+def b2c_where(wh_id, date_cond):
     return f"""
     {date_cond}
     AND o.mst_warehouse_id = {wh_id}
@@ -64,22 +81,6 @@ def b2c_where(wh_id, date_cond=None):
     AND s.shipper_name != 'MUSINSA_USED'
     """
 
-def make_date_cond(target_date=None, start_date=None, end_date=None):
-    """무배당발 날짜 조건 생성. 단일 날짜 또는 범위 지원."""
-    from datetime import datetime, timedelta
-    if start_date and end_date:
-        # 범위: 시작일-1일 23시 ~ 종료일 22시
-        dt_start = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=1)
-        dt_end   = datetime.strptime(end_date,   "%Y-%m-%d")
-        return f"SUBSTRING(o.cut_off_no, 1, 10) BETWEEN '{dt_start.strftime('%Y%m%d')}23' AND '{dt_end.strftime('%Y%m%d')}22'"
-    elif target_date:
-        # 단일 날짜
-        dt      = datetime.strptime(target_date, "%Y-%m-%d")
-        dt_prev = (dt - timedelta(days=1)).strftime("%Y%m%d")
-        dt_curr = dt.strftime("%Y%m%d")
-        return f"SUBSTRING(o.cut_off_no, 1, 10) BETWEEN '{dt_prev}23' AND '{dt_curr}22'"
-    return None  # 오늘(기본)
-
 def area_join():
     return """
     JOIN pbo.logistics.mst_location l ON l.id = oa.mst_location_id
@@ -87,91 +88,103 @@ def area_join():
     JOIN pbo.logistics.mst_area a ON a.id = z.mst_area_id
     """
 
-def fetch_b2c(center_code, target_date=None, start_date=None, end_date=None):
-    c = CENTERS[center_code]
-    wh_id = c["id"]
-    areas = c["areas"]
-    area_list = "'" + "','".join(areas) + "'"
+
+# ── 실제 조회 (4개 쿼리 병렬) ────────────────────────────────────────────────
+def fetch_dashboard(center_code, target_date=None, start_date=None, end_date=None):
+    c         = CENTERS[center_code]
+    wh_id     = c["id"]
+    wh_nm     = c["wh_nm"]
+    area_list = "'" + "','".join(c["areas"]) + "'"
     date_cond = make_date_cond(target_date=target_date, start_date=start_date, end_date=end_date)
-    where = b2c_where(wh_id, date_cond)
-    ajoin = area_join()
+    where     = b2c_where(wh_id, date_cond)
+    ajoin     = area_join()
 
-    total = query(f"""
-        SELECT SUM(o.total_planned_quantity) AS total_qty
-        FROM `pbo-rt`.logistics.outbound o
-        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
-        WHERE {where}
-    """)
-    total_qty = total[0]["total_qty"] if total else 0
+    # 예측치 날짜
+    if target_date:
+        fc_date_expr = f"'{target_date}'"
+    else:
+        fc_date_expr = "CURRENT_DATE"
 
-    summary = query(f"""
-        SELECT
-            SUM(oa.quantity) AS alloc_qty,
-            SUM(CASE WHEN oi.picking_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN oi.packing_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty
-        FROM `pbo-rt`.logistics.outbound_assign oa
-        JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id
-        JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id
-        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
-        {ajoin}
-        WHERE {where}
-          AND a.code IN ({area_list})
-          AND a.mst_warehouse_id = {wh_id}
-    """)
+    def q_total():
+        return query(
+            f"SELECT SUM(o.total_planned_quantity) AS total_qty"
+            f" FROM `pbo-rt`.logistics.outbound o"
+            f" JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id"
+            f" WHERE {where}"
+        )
 
-    result = summary[0] if summary else {}
-    result["total_qty"] = total_qty
+    def q_summary():
+        return query(
+            f"SELECT SUM(oa.quantity) AS alloc_qty,"
+            f" SUM(CASE WHEN oi.picking_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,"
+            f" SUM(CASE WHEN oi.packing_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty"
+            f" FROM `pbo-rt`.logistics.outbound_assign oa"
+            f" JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id"
+            f" JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id"
+            f" JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id"
+            f" {ajoin}"
+            f" WHERE {where} AND a.code IN ({area_list}) AND a.mst_warehouse_id = {wh_id}"
+        )
 
-    floors = query(f"""
-        SELECT
-            a.code AS floor,
-            a.title AS floor_title,
-            SUM(oa.quantity) AS total_qty,
-            SUM(oa.quantity) AS alloc_qty,
-            SUM(CASE WHEN oi.picking_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,
-            SUM(CASE WHEN oi.picking_status != 'COMPLETE' THEN oa.quantity ELSE 0 END) AS unpick_qty,
-            SUM(CASE WHEN oi.packing_status = 'COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty,
-            SUM(CASE WHEN oi.packing_status != 'COMPLETE' THEN oa.quantity ELSE 0 END) AS unpack_qty
-        FROM `pbo-rt`.logistics.outbound_assign oa
-        JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id
-        JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id
-        JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id
-        {ajoin}
-        WHERE {where}
-          AND a.code IN ({area_list})
-          AND a.mst_warehouse_id = {wh_id}
-        GROUP BY a.code, a.title
-        ORDER BY a.code
-    """)
+    def q_floors():
+        return query(
+            f"SELECT a.code AS floor, a.title AS floor_title,"
+            f" SUM(oa.quantity) AS total_qty, SUM(oa.quantity) AS alloc_qty,"
+            f" SUM(CASE WHEN oi.picking_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,"
+            f" SUM(CASE WHEN oi.picking_status!='COMPLETE' THEN oa.quantity ELSE 0 END) AS unpick_qty,"
+            f" SUM(CASE WHEN oi.packing_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty,"
+            f" SUM(CASE WHEN oi.packing_status!='COMPLETE' THEN oa.quantity ELSE 0 END) AS unpack_qty"
+            f" FROM `pbo-rt`.logistics.outbound_assign oa"
+            f" JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id"
+            f" JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id"
+            f" JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id"
+            f" {ajoin}"
+            f" WHERE {where} AND a.code IN ({area_list}) AND a.mst_warehouse_id = {wh_id}"
+            f" GROUP BY a.code, a.title ORDER BY a.code"
+        )
+
+    def q_forecast():
+        # 누적 범위 조회 시 예측치는 의미 없으므로 skip
+        if start_date and end_date:
+            return [{"fcst_total": None}]
+        return query(
+            f"SELECT SUM(fcst) AS fcst_total"
+            f" FROM TEAM.logistics.raw_logistics_snop_fc_forecast_daily"
+            f" WHERE dt = {fc_date_expr} AND wh_nm = '{wh_nm}' AND fcst > 0"
+        )
+
+    # 4개 병렬 실행
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        f_total    = executor.submit(q_total)
+        f_summary  = executor.submit(q_summary)
+        f_floors   = executor.submit(q_floors)
+        f_forecast = executor.submit(q_forecast)
+        total_rows    = f_total.result()
+        summary_rows  = f_summary.result()
+        floors_rows   = f_floors.result()
+        forecast_rows = f_forecast.result()
+
+    total_qty = total_rows[0]["total_qty"] if total_rows else 0
+    summary   = summary_rows[0] if summary_rows else {}
+    summary["total_qty"] = total_qty
+    fcst_total = forecast_rows[0]["fcst_total"] if forecast_rows else None
 
     return {
-        "status": "ok",
-        "summary": result,
-        "floors": floors,
-        "dongs": c["dongs"]
+        "status":    "ok",
+        "summary":   summary,
+        "floors":    floors_rows,
+        "dongs":     c["dongs"],
+        "fcst_total": fcst_total,
     }
 
-def fetch_forecast(center_code, target_date=None):
-    c = CENTERS[center_code]
-    wh_nm = c["wh_nm"]
-    fc_date = target_date if target_date else "CURRENT_DATE"
-    fc_date_expr = f"'{fc_date}'" if target_date else "CURRENT_DATE"
-    forecast = query(f"""
-        SELECT SUM(fcst) AS fcst_total
-        FROM TEAM.logistics.raw_logistics_snop_fc_forecast_daily
-        WHERE dt = {fc_date_expr}
-          AND wh_nm = '{wh_nm}'
-          AND fcst > 0
-    """)
-    return {"status": "ok", "forecast": forecast[0] if forecast else {}}
 
+# ── 백그라운드 캐시 갱신 ──────────────────────────────────────────────────────
 def refresh_all():
     while True:
         for code in CENTERS:
             try:
                 logger.info(f"캐시 갱신: {code}")
-                cache[code]["b2c"] = fetch_b2c(code)
-                cache[code]["forecast"] = fetch_forecast(code)
+                cache[code]["data"]         = fetch_dashboard(code)
                 cache[code]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 logger.info(f"완료: {code}")
             except Exception as e:
@@ -184,57 +197,57 @@ def startup_event():
     thread.start()
     logger.info("백그라운드 캐시 갱신 시작")
 
-@app.get("/api/b2c")
-def get_b2c(center: str = Query(default="NWH01"), date: str = Query(default="")):
+
+# ── API ───────────────────────────────────────────────────────────────────────
+@app.get("/api/dashboard")
+def get_dashboard(center: str = Query(default="NWH01"), date: str = Query(default="")):
+    """오늘 탭 전용. 오늘 날짜 → 캐시 즉시 반환 / 다른 날짜 → 직접 조회."""
     if center not in CENTERS:
         return {"status": "error", "message": "센터 코드 오류"}
-    # 날짜 선택 시 캐시 무시하고 직접 조회
-    if date and date != time.strftime("%Y-%m-%d"):
-        try:
-            data = fetch_b2c(center, target_date=date)
-            return {**data, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"), "selected_date": date}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-    if cache[center]["b2c"] is None:
-        try:
-            cache[center]["b2c"] = fetch_b2c(center)
-            cache[center]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-    return {**cache[center]["b2c"], "last_updated": cache[center]["last_updated"]}
+    today = time.strftime("%Y-%m-%d")
+    # 오늘 날짜(또는 date 미전달) → 캐시 반환
+    if not date or date == today:
+        if cache[center]["data"] is None:
+            try:
+                cache[center]["data"]         = fetch_dashboard(center)
+                cache[center]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+        return {**cache[center]["data"], "last_updated": cache[center]["last_updated"]}
+    # 다른 날짜 → 직접 조회
+    try:
+        data = fetch_dashboard(center, target_date=date)
+        return {**data, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"), "selected_date": date}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-@app.get("/api/b2c_range")
-def get_b2c_range(center: str = Query(default="NWH01"),
-                  start: str = Query(...),
-                  end: str = Query(...)):
-    """누적 탭용 날짜 범위 조회. start/end = YYYY-MM-DD, 캐시 없이 직접 조회."""
+@app.get("/api/dashboard_range")
+def get_dashboard_range(center: str = Query(default="NWH01"),
+                        start: str = Query(...),
+                        end:   str = Query(...)):
+    """누적 탭 전용. 날짜 범위 직접 조회, 캐시 없음."""
     if center not in CENTERS:
         return {"status": "error", "message": "센터 코드 오류"}
     try:
-        data = fetch_b2c(center, start_date=start, end_date=end)
+        data = fetch_dashboard(center, start_date=start, end_date=end)
         return {**data, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "start_date": start, "end_date": end}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# 하위 호환 유지 (기존 /api/b2c, /api/forecast 엔드포인트)
+@app.get("/api/b2c")
+def get_b2c(center: str = Query(default="NWH01"), date: str = Query(default="")):
+    return get_dashboard(center=center, date=date)
+
 @app.get("/api/forecast")
 def get_forecast(center: str = Query(default="NWH01"), date: str = Query(default="")):
-    if center not in CENTERS:
-        return {"status": "error", "message": "센터 코드 오류"}
-    today = time.strftime("%Y-%m-%d")
-    target_date = date if date else today
-    # 날짜가 있으면 항상 직접 조회 (예측치는 날짜마다 다름)
-    if target_date != today or cache[center]["forecast"] is None:
-        try:
-            fc = fetch_forecast(center, target_date if target_date != today else None)
-            b2c_data = cache[center]["b2c"] if target_date == today else fetch_b2c(center, target_date)
-            total = b2c_data["summary"]["total_qty"] if b2c_data else 0
-            return {**fc, "total_qty": total, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"), "selected_date": target_date}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-    fc = cache[center]["forecast"]
-    total = cache[center]["b2c"]["summary"]["total_qty"] if cache[center]["b2c"] else 0
-    return {**fc, "total_qty": total, "last_updated": cache[center]["last_updated"], "selected_date": today}
+    return get_dashboard(center=center, date=date)
+
+@app.get("/api/b2c_range")
+def get_b2c_range(center: str = Query(default="NWH01"),
+                  start: str = Query(...), end: str = Query(...)):
+    return get_dashboard_range(center=center, start=start, end=end)
 
 @app.get("/api/centers")
 def get_centers():
@@ -242,10 +255,108 @@ def get_centers():
 
 @app.get("/api/status")
 def get_status():
-    return {k: {"last_updated": v["last_updated"], "has_cache": v["b2c"] is not None}
+    return {k: {"last_updated": v["last_updated"], "has_cache": v["data"] is not None}
             for k, v in cache.items()}
+
+@app.get("/api/overview")
+def get_overview(date: str = Query(default="")):
+    """전체 센터 종합 현황.
+    date 미전달 → 캐시 즉시 반환.
+    date 전달(오늘 포함) → 전체 센터 병렬 직접 조회."""
+
+    def make_item(code, d, upd):
+        c = CENTERS[code]
+        if d is None:
+            return {"code": code, "title": c["title"], "status": "loading"}
+        s     = d.get("summary", {})
+        total = int(s.get("total_qty")  or 0)
+        alloc = int(s.get("alloc_qty")  or 0)
+        pick  = int(s.get("pick_qty")   or 0)
+        pack  = int(s.get("pack_qty")   or 0)
+        fcst  = int(d.get("fcst_total") or 0)
+        return {
+            "code":        code,
+            "title":       c["title"],
+            "status":      "ok",
+            "total_qty":   total,
+            "alloc_qty":   alloc,
+            "pick_qty":    pick,
+            "pack_qty":    pack,
+            "fcst_total":  fcst,
+            "unalloc_qty": total - alloc,
+            "unpick_qty":  alloc - pick,
+            "unpack_qty":  alloc - pack,
+            "alloc_pct":   round(alloc / total * 100) if total else 0,
+            "pick_pct":    round(pick  / alloc * 100) if alloc else 0,
+            "pack_pct":    round(pack  / alloc * 100) if alloc else 0,
+            "fcst_pct":    round(total / fcst  * 100) if fcst  else 0,
+            "last_updated": upd,
+        }
+
+    # date 미전달 → 캐시 즉시 반환
+    if not date:
+        return [make_item(code, cache[code]["data"], cache[code]["last_updated"])
+                for code in CENTERS]
+
+    # date 전달 → 전체 센터 병렬 직접 조회
+    def fetch_one(code):
+        try:
+            d = fetch_dashboard(code, target_date=date)
+            return make_item(code, d, time.strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception as e:
+            return {"code": code, "title": CENTERS[code]["title"],
+                    "status": "error", "message": str(e)}
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_one, code): code for code in CENTERS}
+        results = {futures[f]: f.result() for f in futures}
+    return [results[code] for code in CENTERS]
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
     with open("C:/dashboard/index.html", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/api/overview_range")
+def get_overview_range(start: str = Query(...), end: str = Query(...)):
+    """전체 센터 누적 범위 조회. 5개 센터 병렬 실행."""
+    def fetch_one(code):
+        try:
+            d = fetch_dashboard(code, start_date=start, end_date=end)
+            c = CENTERS[code]
+            s = d.get("summary", {})
+            total = int(s.get("total_qty")  or 0)
+            alloc = int(s.get("alloc_qty")  or 0)
+            pick  = int(s.get("pick_qty")   or 0)
+            pack  = int(s.get("pack_qty")   or 0)
+            return {
+                "code":        code,
+                "title":       c["title"],
+                "status":      "ok",
+                "total_qty":   total,
+                "alloc_qty":   alloc,
+                "pick_qty":    pick,
+                "pack_qty":    pack,
+                "fcst_total":  None,
+                "unalloc_qty": total - alloc,
+                "unpick_qty":  alloc - pick,
+                "unpack_qty":  alloc - pack,
+                "alloc_pct":   round(alloc / total * 100) if total else 0,
+                "pick_pct":    round(pick  / alloc * 100) if alloc else 0,
+                "pack_pct":    round(pack  / alloc * 100) if alloc else 0,
+                "fcst_pct":    0,
+                "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        except Exception as e:
+            return {"code": code, "title": CENTERS[code]["title"], "status": "error", "message": str(e)}
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_one, code): code for code in CENTERS}
+        results = {code: f.result() for f, code in [(f, futures[f]) for f in futures]}
+
+    return [results[code] for code in CENTERS]
+
+@app.get("/overview", response_class=HTMLResponse)
+def overview():
+    with open("C:/dashboard/overview.html", encoding="utf-8") as f:
         return f.read()

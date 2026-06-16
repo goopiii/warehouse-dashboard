@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>물류센터 종합 현황</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'맑은 고딕',sans-serif;background:#f0f2f5;min-height:100vh}
+
+/* 헤더 */
+.header{background:#111827;padding:10px 24px;display:flex;justify-content:space-between;align-items:center}
+.header-left{display:flex;align-items:center;gap:14px}
+.header-title{font-size:15px;font-weight:700;color:#f9fafb}
+.header-sub{font-size:12px;color:#6b7280}
+.header-right{display:flex;align-items:center;gap:10px}
+.header-time{font-size:13px;color:#9ca3af}
+.refresh-badge{font-size:11px;color:#6b7280;background:#1f2937;padding:3px 10px;border-radius:4px}
+.btn-detail{font-size:12px;color:#60a5fa;background:#1f2937;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;text-decoration:none}
+
+/* 탭 */
+.tab-bar{background:#111827;border-top:1px solid #1f2937;padding:0 24px;display:flex;align-items:center;gap:10px;height:44px}
+.tab-btn{background:transparent;color:#6b7280;border:none;border-radius:5px;padding:5px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:'맑은 고딕',sans-serif}
+.tab-btn.active{background:#3b82f6;color:#fff}
+.tab-divider{width:1px;background:#374151;height:20px}
+
+/* 날짜 컨트롤 */
+.date-ctrl{display:flex;align-items:center;gap:6px}
+.date-ctrl input[type=date]{background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;outline:none;font-family:'맑은 고딕',sans-serif}
+.date-ctrl button{background:#374151;color:#9ca3af;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:'맑은 고딕',sans-serif}
+.date-ctrl button.preset-3d,.date-ctrl button.preset-7d{color:#9ca3af}
+.btn-query{background:#1d4ed8 !important;color:#fff !important;font-weight:700 !important}
+
+/* 콘텐츠 */
+.content{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+
+/* 배너 */
+.summary-banner{background:#111827;border-radius:10px;padding:14px 24px;display:flex;gap:32px;align-items:center}
+.banner-item{text-align:center}
+.banner-label{font-size:11px;color:#9ca3af;font-weight:700;margin-bottom:4px}
+.banner-value{font-size:28px;font-weight:700;color:#fff}
+.banner-value.blue{color:#60a5fa}
+.banner-value.green{color:#34d399}
+.banner-value.red{color:#f87171}
+.banner-divider{width:1px;background:#374151;height:44px}
+.banner-period{margin-left:auto;text-align:right}
+.banner-period-label{font-size:13px;color:#fbbf24;font-weight:700}
+.banner-period-sub{font-size:11px;color:#6b7280;margin-top:2px}
+
+/* 카드 그리드 */
+.cards-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+
+/* 센터 카드 */
+.center-card{background:#fff;border-radius:12px;border:1.5px solid #e5e7eb;overflow:hidden;cursor:pointer;transition:box-shadow .2s}
+.center-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.12)}
+.center-card.alert-red{border-color:#fca5a5}
+.center-card.alert-amber{border-color:#fcd34d}
+.center-card.alert-green{border-color:#6ee7b7}
+
+.card-header{padding:12px 16px 8px;display:flex;justify-content:space-between;align-items:center}
+.card-title{font-size:15px;font-weight:700;color:#111827}
+.card-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px}
+.badge-red{background:#fee2e2;color:#dc2626}
+.badge-amber{background:#fef3c7;color:#d97706}
+.badge-green{background:#d1fae5;color:#059669}
+.badge-gray{background:#f3f4f6;color:#6b7280}
+
+.card-body{padding:0 16px 12px}
+.card-forecast{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.forecast-label{font-size:11px;color:#9ca3af;font-weight:700}
+.fcst-pct{font-size:13px;font-weight:700}
+.fcst-pct.over{color:#3b82f6}
+.fcst-pct.under{color:#9ca3af}
+.total-val{font-size:30px;font-weight:700;color:#111827;line-height:1;margin-bottom:2px}
+
+.progress-group{display:flex;flex-direction:column;gap:5px;margin-top:10px}
+.prog-row{display:flex;align-items:center;gap:8px}
+.prog-name{font-size:11px;font-weight:700;color:#6b7280;width:28px;flex-shrink:0}
+.prog-bar-wrap{flex:1;background:#f3f4f6;border-radius:4px;height:7px;overflow:hidden}
+.prog-bar-fill{height:100%;border-radius:4px;transition:width .8s ease}
+.prog-pct-label{font-size:12px;font-weight:700;width:36px;text-align:right;flex-shrink:0}
+
+.unproc-row{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6}
+.unproc-item{text-align:center}
+.unproc-label{font-size:10px;color:#9ca3af;font-weight:700;margin-bottom:2px}
+.unproc-val{font-size:16px;font-weight:700}
+.unproc-val.red{color:#dc2626}
+.unproc-val.gray{color:#d1d5db}
+
+.card-footer{font-size:10px;color:#d1d5db;padding:0 16px 8px;text-align:right}
+.loading-card{background:#fff;border-radius:12px;border:1.5px solid #e5e7eb;padding:40px;text-align:center;color:#9ca3af;font-size:14px}
+.loading{text-align:center;padding:40px;color:#9ca3af;font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">📦 물류센터 종합 현황</div>
+    <div class="header-sub">전체 센터 B2C 출고 현황</div>
+  </div>
+  <div class="header-right">
+    <a href="/" class="btn-detail">현장 상세보기 →</a>
+    <span class="refresh-badge" id="next-refresh">다음 갱신: 10분 후</span>
+    <span class="header-time" id="clock"></span>
+  </div>
+</div>
+
+<!-- 탭바 -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-today" onclick="switchTab('today')">오늘</button>
+  <button class="tab-btn" id="tab-range" onclick="switchTab('range')">누적</button>
+  <div class="tab-divider"></div>
+  <!-- 오늘 탭 날짜 컨트롤 -->
+  <div class="date-ctrl" id="ctrl-today" style="display:flex">
+    <input type="date" id="today-date">
+    <button onclick="resetToToday()">오늘</button>
+    <button class="btn-query" onclick="loadToday(document.getElementById('today-date').value)">조회</button>
+  </div>
+  <div class="tab-divider"></div>
+  <!-- 누적 컨트롤 -->
+  <div class="date-ctrl" id="ctrl-range" style="display:none">
+    <input type="date" id="range-start">
+    <span style="color:#6b7280;font-size:13px">~</span>
+    <input type="date" id="range-end">
+    <button class="preset-3d" onclick="setPreset('3d')">3일</button>
+    <button class="preset-7d" onclick="setPreset('7d')">7일</button>
+    <button class="btn-query" onclick="loadRange()">조회</button>
+  </div>
+</div>
+
+<div class="content">
+  <!-- 배너 -->
+  <div class="summary-banner" id="summary-banner">
+    <div class="banner-item">
+      <div class="banner-label">전체 주문</div>
+      <div class="banner-value blue" id="b-total">-</div>
+    </div>
+    <div class="banner-divider"></div>
+    <div class="banner-item">
+      <div class="banner-label">할당완료</div>
+      <div class="banner-value" id="b-alloc">-</div>
+    </div>
+    <div class="banner-divider"></div>
+    <div class="banner-item">
+      <div class="banner-label">피킹완료</div>
+      <div class="banner-value" id="b-pick">-</div>
+    </div>
+    <div class="banner-divider"></div>
+    <div class="banner-item">
+      <div class="banner-label">패킹완료</div>
+      <div class="banner-value green" id="b-pack">-</div>
+    </div>
+    <div class="banner-divider"></div>
+    <div class="banner-item">
+      <div class="banner-label">미패킹 잔여</div>
+      <div class="banner-value red" id="b-unpack">-</div>
+    </div>
+    <div class="banner-period" id="banner-period" style="display:none">
+      <div class="banner-period-label" id="period-label">-</div>
+      <div class="banner-period-sub" id="period-sub">누적 기간</div>
+    </div>
+    <div style="margin-left:auto;font-size:12px;color:#6b7280" id="b-updated"></div>
+  </div>
+
+  <!-- 카드 그리드 -->
+  <div class="cards-grid" id="cards-grid">
+    <div class="loading-card">데이터 불러오는 중...</div>
+  </div>
+</div>
+
+<script>
+const fmt = n => n == null ? '-' : Number(n).toLocaleString();
+let currentTab = 'today';
+let nextSec = 600;
+
+// ── 탭 전환 ───────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  const isRange = tab === 'range';
+  document.getElementById('tab-today').className = 'tab-btn' + (isRange ? '' : ' active');
+  document.getElementById('tab-range').className = 'tab-btn' + (isRange ? ' active' : '');
+  document.getElementById('ctrl-range').style.display = isRange ? 'flex' : 'none';
+  document.getElementById('ctrl-today').style.display = isRange ? 'none' : 'flex';
+  document.getElementById('banner-period').style.display = isRange ? 'block' : 'none';
+  document.getElementById('b-updated').style.display = isRange ? 'none' : '';
+
+  if (isRange) {
+    if (!document.getElementById('range-start').value) setPreset('3d');
+    document.getElementById('cards-grid').innerHTML = '<div class="loading">기간을 선택하고 조회 버튼을 누르세요</div>';
+    resetBanner();
+  } else {
+    loadToday(document.getElementById('today-date').value);
+  }
+}
+
+// ── 프리셋 ────────────────────────────────────────────
+function setPreset(preset) {
+  const today = new Date();
+  const fmt0  = d => d.toISOString().slice(0,10);
+  let start, end = fmt0(today);
+  if (preset === '3d') {
+    const s = new Date(today); s.setDate(today.getDate() - 2); start = fmt0(s);
+  } else if (preset === '7d') {
+    const s = new Date(today); s.setDate(today.getDate() - 6); start = fmt0(s);
+  }
+  document.getElementById('range-start').value = start;
+  document.getElementById('range-end').value   = end;
+}
+
+function resetBanner() {
+  ['b-total','b-alloc','b-pick','b-pack','b-unpack'].forEach(id => {
+    document.getElementById(id).textContent = '-';
+  });
+}
+
+// ── 오늘 탭 날짜 변경 ────────────────────────────────
+
+
+function resetToToday() {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('today-date').value = today;
+  loadToday(today);
+}
+
+// ── 오늘 탭 ──────────────────────────────────────────
+async function loadToday(date) {
+  const d2 = date || '';
+  document.getElementById('cards-grid').innerHTML = '<div class="loading">데이터 불러오는 중...</div>';
+  resetBanner();
+  try {
+    const url = '/api/overview' + (d2 ? '?date=' + encodeURIComponent(d2) : '');
+    const res  = await fetch(url);
+    const data = await res.json();
+    renderAll(data, false);
+  } catch(e) {
+    document.getElementById('cards-grid').innerHTML =
+      `<div class="loading-card" style="color:#dc2626">로드 실패: ${e.message}</div>`;
+  }
+}
+
+// ── 누적 탭 ──────────────────────────────────────────
+async function loadRange() {
+  const start = document.getElementById('range-start').value;
+  const end   = document.getElementById('range-end').value;
+  if (!start || !end) { alert('시작일과 종료일을 선택하세요.'); return; }
+  if (start > end)    { alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+
+  document.getElementById('cards-grid').innerHTML = '<div class="loading">전체 센터 누적 데이터 조회 중...</div>';
+  resetBanner();
+
+  try {
+    const res  = await fetch(`/api/overview_range?start=${start}&end=${end}`);
+    const data = await res.json();
+
+    // 기간 레이블
+    const s1   = start.slice(5).replace('-','/');
+    const s2   = end.slice(5).replace('-','/');
+    const days = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+    document.getElementById('period-label').textContent = `${s1} ~ ${s2}`;
+    document.getElementById('period-sub').textContent   = `${days}일간 누적`;
+
+    renderAll(data, true);
+  } catch(e) {
+    document.getElementById('cards-grid').innerHTML =
+      `<div class="loading-card" style="color:#dc2626">조회 실패: ${e.message}</div>`;
+  }
+}
+
+// ── 공통 렌더러 ───────────────────────────────────────
+function renderAll(data, isRange) {
+  // 배너 합산
+  let totTotal=0, totAlloc=0, totPick=0, totPack=0, totUnpack=0, lastUpd='-';
+  data.forEach(d => {
+    if (d.status !== 'ok') return;
+    totTotal  += d.total_qty  || 0;
+    totAlloc  += d.alloc_qty  || 0;
+    totPick   += d.pick_qty   || 0;
+    totPack   += d.pack_qty   || 0;
+    totUnpack += d.unpack_qty || 0;
+    if (d.last_updated) lastUpd = d.last_updated;
+  });
+  document.getElementById('b-total').textContent  = fmt(totTotal)  + ' PCS';
+  document.getElementById('b-alloc').textContent  = fmt(totAlloc)  + ' PCS';
+  document.getElementById('b-pick').textContent   = fmt(totPick)   + ' PCS';
+  document.getElementById('b-pack').textContent   = fmt(totPack)   + ' PCS';
+  document.getElementById('b-unpack').textContent = fmt(totUnpack) + ' PCS';
+  if (!isRange) document.getElementById('b-updated').textContent = '기준: ' + lastUpd;
+
+  // 카드
+  document.getElementById('cards-grid').innerHTML = data.map(d => {
+    if (d.status === 'loading') return `<div class="loading-card">${d.title}<br><span style="font-size:12px">갱신 중...</span></div>`;
+    if (d.status === 'error')   return `<div class="loading-card" style="color:#dc2626">${d.title}<br><span style="font-size:11px">${d.message||'오류'}</span></div>`;
+
+    const allocP = d.alloc_pct, pickP = d.pick_pct, packP = d.pack_pct, fcstP = d.fcst_pct;
+    const alert  = cardAlert(d.unpack_qty, d.alloc_qty);
+    const badge  = badgeClass(d.unpack_qty, d.alloc_qty);
+    const bText  = badgeText(d.unpack_qty, d.alloc_qty);
+    const uColor = d.unpack_qty > 0 ? 'red' : 'gray';
+    const detailUrl = isRange
+      ? `/?center=${d.code}`
+      : `/?center=${d.code}`;
+
+    const forecastRow = (!isRange && d.fcst_total)
+      ? `<div class="card-forecast">
+           <span class="forecast-label">예측 ${fmt(d.fcst_total)} PCS</span>
+           <span class="fcst-pct ${fcstP >= 100 ? 'over' : 'under'}">${fcstP}%</span>
+         </div>`
+      : `<div style="height:18px"></div>`;
+
+    return `
+    <div class="center-card ${alert}" onclick="location.href='${detailUrl}'">
+      <div class="card-header">
+        <div class="card-title">${d.title}</div>
+        <div class="card-badge ${badge}">${bText}</div>
+      </div>
+      <div class="card-body">
+        ${forecastRow}
+        <div class="total-val">${fmt(d.total_qty)} <span style="font-size:13px;color:#9ca3af;font-weight:400">PCS</span></div>
+        <div class="progress-group">
+          <div class="prog-row">
+            <div class="prog-name">할당</div>
+            <div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:${allocP}%;background:#1d4ed8"></div></div>
+            <div class="prog-pct-label" style="color:${pctColor(allocP)}">${allocP}%</div>
+          </div>
+          <div class="prog-row">
+            <div class="prog-name">피킹</div>
+            <div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:${pickP}%;background:#d97706"></div></div>
+            <div class="prog-pct-label" style="color:${pctColor(pickP)}">${pickP}%</div>
+          </div>
+          <div class="prog-row">
+            <div class="prog-name">패킹</div>
+            <div class="prog-bar-wrap"><div class="prog-bar-fill" style="width:${packP}%;background:#059669"></div></div>
+            <div class="prog-pct-label" style="color:${pctColor(packP)}">${packP}%</div>
+          </div>
+        </div>
+        <div class="unproc-row">
+          <div class="unproc-item">
+            <div class="unproc-label">미할당</div>
+            <div class="unproc-val ${d.unalloc_qty > 0 ? 'red' : 'gray'}">${fmt(d.unalloc_qty)}</div>
+          </div>
+          <div class="unproc-item">
+            <div class="unproc-label">미피킹</div>
+            <div class="unproc-val ${d.unpick_qty > 0 ? 'red' : 'gray'}">${fmt(d.unpick_qty)}</div>
+          </div>
+          <div class="unproc-item">
+            <div class="unproc-label">미패킹</div>
+            <div class="unproc-val ${uColor}">${fmt(d.unpack_qty)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer">${d.last_updated || ''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── 헬퍼 ─────────────────────────────────────────────
+function cardAlert(unpack, alloc) {
+  if (!alloc) return '';
+  const r = unpack / alloc;
+  if (r > 0.3) return 'alert-red';
+  if (r > 0.1) return 'alert-amber';
+  return 'alert-green';
+}
+function badgeClass(unpack, alloc) {
+  if (!alloc) return 'badge-gray';
+  const r = unpack / alloc;
+  if (r > 0.3) return 'badge-red';
+  if (r > 0.1) return 'badge-amber';
+  return 'badge-green';
+}
+function badgeText(unpack, alloc) {
+  if (!alloc) return '-';
+  const r = unpack / alloc;
+  if (r > 0.3) return '주의';
+  if (r > 0.1) return '확인';
+  return '정상';
+}
+function pctColor(p) {
+  if (p >= 90) return '#059669';
+  if (p >= 70) return '#d97706';
+  return '#dc2626';
+}
+
+// ── 시계 + 카운트다운 ─────────────────────────────────
+function tick() {
+  const now = new Date(), pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+function countdown() {
+  nextSec--;
+  if (nextSec <= 0) {
+    nextSec = 600;
+    if (currentTab === 'range') {
+      const s = document.getElementById('range-start').value;
+      const e = document.getElementById('range-end').value;
+      if (s && e) loadRange();
+    } else {
+      loadToday();
+    }
+  }
+  const m = Math.floor(nextSec/60), s = nextSec%60;
+  document.getElementById('next-refresh').textContent = `다음 갱신: ${m}분 ${String(s).padStart(2,'0')}초 후`;
+}
+
+// 초기화
+const todayStr = new Date().toISOString().slice(0,10);
+document.getElementById('today-date').value = todayStr;
+loadToday(todayStr);
+tick(); setInterval(tick, 1000);
+setInterval(countdown, 1000);
+</script>
+</body>
+</html>
