@@ -178,6 +178,104 @@ def fetch_dashboard(center_code, target_date=None, start_date=None, end_date=Non
     }
 
 
+# ── 전체 센터 한번에 조회 (overview 전용) ────────────────────────────────────
+def fetch_dashboard_all(target_date=None, start_date=None, end_date=None):
+    """센터 5개를 쿼리 3개로 한번에 조회. GROUP BY mst_warehouse_id."""
+    all_ids   = [c["id"] for c in CENTERS.values()]
+    id_list   = ",".join(str(i) for i in all_ids)
+    date_cond = make_date_cond(target_date=target_date, start_date=start_date, end_date=end_date)
+    ajoin     = area_join()
+    all_areas = list({a for c in CENTERS.values() for a in c["areas"]})
+    area_list = "'" + "','".join(all_areas) + "'"
+
+    where = f"""
+        {date_cond}
+        AND o.mst_warehouse_id IN ({id_list})
+        AND o.order_type NOT IN ('IN_HOUSE','ETC')
+        AND o.delivery_type != 'LOADED_FREIGHT'
+        AND o.outbound_status != 'CANCEL'
+        AND CONCAT(o.assign_status, o.picking_status, o.packing_status, o.outbound_status)
+            != 'NOTHINGREADYNOTHINGCREATED_WAVE'
+        AND s.shipper_name != 'MUSINSA_USED'
+    """
+
+    def q_total():
+        return query(
+            f"SELECT o.mst_warehouse_id, SUM(o.total_planned_quantity) AS total_qty"
+            f" FROM `pbo-rt`.logistics.outbound o"
+            f" JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id"
+            f" WHERE {where} GROUP BY o.mst_warehouse_id"
+        )
+
+    def q_summary():
+        return query(
+            f"SELECT o.mst_warehouse_id,"
+            f" SUM(oa.quantity) AS alloc_qty,"
+            f" SUM(CASE WHEN oi.picking_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pick_qty,"
+            f" SUM(CASE WHEN oi.packing_status='COMPLETE' THEN oa.quantity ELSE 0 END) AS pack_qty"
+            f" FROM `pbo-rt`.logistics.outbound_assign oa"
+            f" JOIN `pbo-rt`.logistics.outbound_item oi ON oi.id = oa.outbound_item_id"
+            f" JOIN `pbo-rt`.logistics.outbound o ON o.id = oi.outbound_id"
+            f" JOIN pbo.logistics.mst_shipper s ON s.id = o.mst_shipper_id"
+            f" {ajoin}"
+            f" WHERE {where} AND a.code IN ({area_list})"
+            f" GROUP BY o.mst_warehouse_id"
+        )
+
+    def q_forecast():
+        if start_date and end_date:
+            return []
+        fc_expr  = f"\'{target_date}\'" if target_date else "CURRENT_DATE"
+        wh_list  = "'" + "','".join(c["wh_nm"] for c in CENTERS.values()) + "'"
+        return query(
+            f"SELECT wh_nm, SUM(fcst) AS fcst_total"
+            f" FROM TEAM.logistics.raw_logistics_snop_fc_forecast_daily"
+            f" WHERE dt = {fc_expr} AND wh_nm IN ({wh_list}) AND fcst > 0"
+            f" GROUP BY wh_nm"
+        )
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        f_t = executor.submit(q_total)
+        f_s = executor.submit(q_summary)
+        f_f = executor.submit(q_forecast)
+        total_rows    = f_t.result()
+        summary_rows  = f_s.result()
+        forecast_rows = f_f.result()
+
+    total_map   = {r["mst_warehouse_id"]: r["total_qty"] for r in total_rows}
+    summary_map = {r["mst_warehouse_id"]: r              for r in summary_rows}
+    fcst_map    = {r["wh_nm"]: r["fcst_total"]           for r in forecast_rows}
+
+    result = {}
+    for code, c in CENTERS.items():
+        wh_id = c["id"]
+        total = int(total_map.get(wh_id) or 0)
+        s     = summary_map.get(wh_id, {})
+        alloc = int(s.get("alloc_qty") or 0)
+        pick  = int(s.get("pick_qty")  or 0)
+        pack  = int(s.get("pack_qty")  or 0)
+        fcst  = int(fcst_map.get(c["wh_nm"]) or 0)
+        result[code] = {
+            "code":        code,
+            "title":       c["title"],
+            "status":      "ok",
+            "total_qty":   total,
+            "alloc_qty":   alloc,
+            "pick_qty":    pick,
+            "pack_qty":    pack,
+            "fcst_total":  fcst,
+            "unalloc_qty": total - alloc,
+            "unpick_qty":  alloc - pick,
+            "unpack_qty":  alloc - pack,
+            "alloc_pct":   round(alloc / total * 100) if total else 0,
+            "pick_pct":    round(pick  / alloc * 100) if alloc else 0,
+            "pack_pct":    round(pack  / alloc * 100) if alloc else 0,
+            "fcst_pct":    round(total / fcst  * 100) if fcst  else 0,
+            "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    return result
+
+
 # ── 백그라운드 캐시 갱신 ──────────────────────────────────────────────────────
 def refresh_all():
     while True:
@@ -298,19 +396,13 @@ def get_overview(date: str = Query(default="")):
         return [make_item(code, cache[code]["data"], cache[code]["last_updated"])
                 for code in CENTERS]
 
-    # date 전달 → 전체 센터 병렬 직접 조회
-    def fetch_one(code):
-        try:
-            d = fetch_dashboard(code, target_date=date)
-            return make_item(code, d, time.strftime("%Y-%m-%d %H:%M:%S"))
-        except Exception as e:
-            return {"code": code, "title": CENTERS[code]["title"],
-                    "status": "error", "message": str(e)}
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_one, code): code for code in CENTERS}
-        results = {futures[f]: f.result() for f in futures}
-    return [results[code] for code in CENTERS]
+    # date 전달 → 전체 센터 한번에 조회 (쿼리 3개)
+    try:
+        results = fetch_dashboard_all(target_date=date)
+        return [results[code] for code in CENTERS]
+    except Exception as e:
+        return [{"code": code, "title": CENTERS[code]["title"],
+                 "status": "error", "message": str(e)} for code in CENTERS]
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
@@ -319,42 +411,13 @@ def dashboard():
 
 @app.get("/api/overview_range")
 def get_overview_range(start: str = Query(...), end: str = Query(...)):
-    """전체 센터 누적 범위 조회. 5개 센터 병렬 실행."""
-    def fetch_one(code):
-        try:
-            d = fetch_dashboard(code, start_date=start, end_date=end)
-            c = CENTERS[code]
-            s = d.get("summary", {})
-            total = int(s.get("total_qty")  or 0)
-            alloc = int(s.get("alloc_qty")  or 0)
-            pick  = int(s.get("pick_qty")   or 0)
-            pack  = int(s.get("pack_qty")   or 0)
-            return {
-                "code":        code,
-                "title":       c["title"],
-                "status":      "ok",
-                "total_qty":   total,
-                "alloc_qty":   alloc,
-                "pick_qty":    pick,
-                "pack_qty":    pack,
-                "fcst_total":  None,
-                "unalloc_qty": total - alloc,
-                "unpick_qty":  alloc - pick,
-                "unpack_qty":  alloc - pack,
-                "alloc_pct":   round(alloc / total * 100) if total else 0,
-                "pick_pct":    round(pick  / alloc * 100) if alloc else 0,
-                "pack_pct":    round(pack  / alloc * 100) if alloc else 0,
-                "fcst_pct":    0,
-                "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        except Exception as e:
-            return {"code": code, "title": CENTERS[code]["title"], "status": "error", "message": str(e)}
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_one, code): code for code in CENTERS}
-        results = {code: f.result() for f, code in [(f, futures[f]) for f in futures]}
-
-    return [results[code] for code in CENTERS]
+    """전체 센터 누적 범위 조회. 쿼리 3개로 한번에 처리."""
+    try:
+        results = fetch_dashboard_all(start_date=start, end_date=end)
+        return [results[code] for code in CENTERS]
+    except Exception as e:
+        return [{"code": code, "title": CENTERS[code]["title"],
+                 "status": "error", "message": str(e)} for code in CENTERS]
 
 @app.get("/overview", response_class=HTMLResponse)
 def overview():
